@@ -196,4 +196,4 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 ## Issues and Contributing
 We welcome your feedback and contributions to this project. Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines. 
 
-Copyright 2018 © Intel Corporation. 
+Copyright 2018 © Intel Corporation.
