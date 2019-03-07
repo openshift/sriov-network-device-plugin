@@ -45,7 +45,7 @@ const (
 	pluginMountPath      = "/var/lib/kubelet/device-plugins"
 	kubeletEndpoint      = "kubelet.sock"
 	pluginEndpointPrefix = "sriovNet"
-	resourceName         = "netdev/sriov"
+	resourceName         = "openshift.io/sriov"
 )
 
 type arrayFlags []string

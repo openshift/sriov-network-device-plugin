@@ -5,6 +5,7 @@ set -e
 SRIOV_DP_SYS_BINARY_DIR="/usr/bin"
 LOG_DIR=""
 LOG_LEVEL=10
+NIC_MODELS="--nic-model 0x8086-0x158b --nic-model 0x15b3-0x1015 --nic-model 0x15b3-0x1017"
 
 function usage()
 {
@@ -41,7 +42,7 @@ done
 
 if [ "$LOG_DIR" != "" ]; then
     mkdir -p "/var/log/$LOG_DIR"
-    $SRIOV_DP_SYS_BINARY_DIR/sriovdp --log_dir "/var/log/$LOG_DIR" --alsologtostderr -v $LOG_LEVEL
+    $SRIOV_DP_SYS_BINARY_DIR/sriovdp --log_dir "/var/log/$LOG_DIR" --alsologtostderr -v $LOG_LEVEL $NIC_MODELS
 else
-    $SRIOV_DP_SYS_BINARY_DIR/sriovdp --logtostderr -v $LOG_LEVEL
+    $SRIOV_DP_SYS_BINARY_DIR/sriovdp --logtostderr -v $LOG_LEVEL $NIC_MODELS
 fi

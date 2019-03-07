@@ -15,6 +15,6 @@ spec:
     args: [ "while true; do sleep 300000; done;" ]
     resources:
       requests:
-        netdev/sriov: '1'
+        openshift.io/sriov: '1'
       limits:
-        netdev/sriov: '1'
+        openshift.io/sriov: '1'
