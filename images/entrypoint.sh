@@ -5,7 +5,7 @@ set -e
 SRIOV_DP_SYS_BINARY_DIR="/usr/bin"
 LOG_DIR=""
 LOG_LEVEL=10
-NIC_MODELS="--nic-model 0x8086-0x158b --nic-model 0x15b3-0x1015 --nic-model 0x15b3-0x1017"
+NIC_MODELS="--nic-model 0x8086-0x158b --nic-model 0x8086-0x154b --nic-model 0x15b3-0x1015 --nic-model 0x15b3-0x1017"
 
 function usage()
 {
