@@ -1,6 +1,9 @@
 package resources
 
 import (
+	"strconv"
+
+	"github.com/golang/glog"
 	"github.com/intel/sriov-network-device-plugin/pkg/types"
 	"github.com/intel/sriov-network-device-plugin/pkg/utils"
 	"github.com/jaypipes/ghw"
@@ -23,6 +26,16 @@ type pciNetDevice struct {
 	deviceSpecs []*pluginapi.DeviceSpec
 	mounts      []*pluginapi.Mount
 	rdmaSpec    types.RdmaSpec
+	linkType    string
+}
+
+// Convert NUMA node number to string.
+// A node of -1 represents "unknown" and is converted to the empty string.
+func nodeToStr(nodeNum int) string {
+	if nodeNum >= 0 {
+		return strconv.Itoa(nodeNum)
+	}
+	return ""
 }
 
 // NewPciNetDevice returns an instance of PciNetDevice interface
@@ -45,6 +58,10 @@ func NewPciNetDevice(pciDevice *ghw.PCIDevice, rFactory types.ResourceFactory) (
 	}
 	pfName, err := utils.GetPfName(pciAddr)
 	if err != nil {
+		glog.Warningf("unable to get PF name %q", err.Error())
+	}
+	vfID, err := utils.GetVFID(pciAddr)
+	if err != nil {
 		return nil, err
 	}
 
@@ -55,9 +72,27 @@ func NewPciNetDevice(pciDevice *ghw.PCIDevice, rFactory types.ResourceFactory) (
 	mnt := infoProvider.GetMounts(pciAddr)
 	env := infoProvider.GetEnvVal(pciAddr)
 	rdmaSpec := rFactory.GetRdmaSpec(pciDevice.Address)
+	nodeNum := utils.GetDevNode(pciAddr)
 	apiDevice := &pluginapi.Device{
 		ID:     pciAddr,
 		Health: pluginapi.Healthy,
+	}
+	if nodeNum >= 0 {
+		numaInfo := &pluginapi.NUMANode{
+			ID: int64(nodeNum),
+		}
+		apiDevice.Topology = &pluginapi.TopologyInfo{
+			Nodes: []*pluginapi.NUMANode{numaInfo},
+		}
+	}
+
+	linkType := ""
+	if len(ifName) > 0 {
+		la, err := utils.GetLinkAttrs(ifName)
+		if err != nil {
+			return nil, err
+		}
+		linkType = la.EncapType
 	}
 
 	// 			4. Create pciNetDevice object with all relevent info
@@ -66,14 +101,15 @@ func NewPciNetDevice(pciDevice *ghw.PCIDevice, rFactory types.ResourceFactory) (
 		ifName:      ifName,
 		pfName:      pfName,
 		driver:      driverName,
-		vfID:        0,  // TO-DO: Get this using utils pkg if needed
+		vfID:        vfID,
 		linkSpeed:   "", // TO-DO: Get this using utils pkg
 		apiDevice:   apiDevice,
 		deviceSpecs: dSpecs,
 		mounts:      mnt,
 		env:         env,
-		numa:        "", // TO-DO: Get this using utils pkg
+		numa:        nodeToStr(nodeNum),
 		rdmaSpec:    rdmaSpec,
+		linkType:    linkType,
 	}, nil
 }
 
@@ -139,4 +175,12 @@ func (nd *pciNetDevice) GetRdmaSpec() types.RdmaSpec {
 
 func getPFInfos(pciAddr string) (pfAddr, pfName string, err error) {
 	return "", "", nil
+}
+
+func (nd *pciNetDevice) GetLinkType() string {
+	return nd.linkType
+}
+
+func (nd *pciNetDevice) GetVFID() int {
+	return nd.vfID
 }

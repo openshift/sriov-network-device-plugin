@@ -172,6 +172,42 @@ var _ = Describe("In the utils package", func() {
 		),
 	)
 
+	DescribeTable("getting NUMA node of device",
+		func(fs *FakeFilesystem, pciAddr string, expected int) {
+			defer fs.Use()()
+			Expect(GetDevNode(pciAddr)).To(Equal(expected))
+		},
+		Entry("reading the device path fails", &FakeFilesystem{}, "0000:00:00.0", -1),
+		Entry("converting the NUMA node to integer fails",
+			&FakeFilesystem{
+				Dirs:  []string{"sys/bus/pci/devices/0000:00:00.1"},
+				Files: map[string][]byte{"sys/bus/pci/devices/0000:00:00.1/numa_node": []byte("invalid content")},
+			},
+			"0000:00:00.1", -1,
+		),
+		Entry("finding positive NUMA node",
+			&FakeFilesystem{
+				Dirs:  []string{"sys/bus/pci/devices/0000:00:00.1"},
+				Files: map[string][]byte{"sys/bus/pci/devices/0000:00:00.1/numa_node": []byte("1")},
+			},
+			"0000:00:00.1", 1,
+		),
+		Entry("finding zero NUMA node",
+			&FakeFilesystem{
+				Dirs:  []string{"sys/bus/pci/devices/0000:00:00.1"},
+				Files: map[string][]byte{"sys/bus/pci/devices/0000:00:00.1/numa_node": []byte("0")},
+			},
+			"0000:00:00.1", 0,
+		),
+		Entry("finding negative NUMA node",
+			&FakeFilesystem{
+				Dirs:  []string{"sys/bus/pci/devices/0000:00:00.1"},
+				Files: map[string][]byte{"sys/bus/pci/devices/0000:00:00.1/numa_node": []byte("-1")},
+			},
+			"0000:00:00.1", -1,
+		),
+	)
+
 	DescribeTable("checking that device status is up",
 		func(fs *FakeFilesystem, dev string, expected bool) {
 			defer fs.Use()()
@@ -389,5 +425,44 @@ var _ = Describe("In the utils package", func() {
 			},
 			"0000:01:10.0", "", true,
 		),
+	)
+
+	DescribeTable("getting ID of VF",
+		func(fs *FakeFilesystem, device string, expected int, shouldFail bool) {
+			defer fs.Use()()
+			actual, err := GetVFID(device)
+			Expect(actual).To(Equal(expected))
+			assertShouldFail(err, shouldFail)
+		},
+		Entry("device doesn't exist",
+			&FakeFilesystem{},
+			"0000:01:10.0", -1, false),
+		Entry("device has no link to PF",
+			&FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:01:10.0"}},
+			"0000:01:10.0", -1, false),
+		Entry("PF has no VF links",
+			&FakeFilesystem{
+				Dirs:     []string{"sys/bus/pci/devices/0000:01:10.0/", "sys/bus/pci/devices/0000:01:00.0/"},
+				Symlinks: map[string]string{"sys/bus/pci/devices/0000:01:10.0/physfn": "../0000:01:00.0"},
+			},
+			"0000:01:10.0", -1, false),
+		Entry("VF not found in PF",
+			&FakeFilesystem{
+				Dirs: []string{"sys/bus/pci/devices/0000:01:10.0/", "sys/bus/pci/devices/0000:01:00.0/"},
+				Symlinks: map[string]string{"sys/bus/pci/devices/0000:01:10.0/physfn": "../0000:01:00.0",
+					"sys/bus/pci/devices/0000:01:00.0/virtfn0": "../0000:01:08.0",
+				},
+			},
+			"0000:01:10.0", -1, false),
+		Entry("VF found in PF",
+			&FakeFilesystem{
+				Dirs: []string{"sys/bus/pci/devices/0000:01:10.0/", "sys/bus/pci/devices/0000:01:00.0/"},
+				Symlinks: map[string]string{"sys/bus/pci/devices/0000:01:10.0/physfn": "../0000:01:00.0",
+					"sys/bus/pci/devices/0000:01:00.0/virtfn0": "../0000:01:08.0",
+					"sys/bus/pci/devices/0000:01:00.0/virtfn1": "../0000:01:09.0",
+					"sys/bus/pci/devices/0000:01:00.0/virtfn2": "../0000:01:10.0",
+				},
+			},
+			"0000:01:10.0", 2, false),
 	)
 })
