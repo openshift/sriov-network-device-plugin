@@ -110,7 +110,8 @@ func (rm *resourceManager) initServers() error {
 		// Create new ResourcePool
 		glog.Infof("")
 		glog.Infof("Creating new ResourcePool: %s", rc.ResourceName)
-		rPool, err := rm.rFactory.GetResourcePool(rc, rm.netDeviceList)
+		filteredDevices := rm.getFilteredDevices(rc)
+		rPool, err := rm.rFactory.GetResourcePool(rc, filteredDevices)
 		if err != nil {
 			glog.Errorf("initServers(): error creating ResourcePool with config %+v: %q", rc, err)
 			return err
@@ -153,7 +154,7 @@ func (rm *resourceManager) stopAllServers() error {
 
 // Validate configurations
 func (rm *resourceManager) validConfigs() bool {
-	resourceName := make(map[string]string) // resource name placeholder
+	resourceNames := make(map[string]string) // resource names placeholder
 
 	for _, conf := range rm.configList {
 		// check if name contains acceptable characters
@@ -161,15 +162,25 @@ func (rm *resourceManager) validConfigs() bool {
 			glog.Errorf("resource name \"%s\" contains invalid characters", conf.ResourceName)
 			return false
 		}
-		// check resource names are unique
-		_, ok := resourceName[conf.ResourceName]
-		if ok {
+
+		// resourcePrefix might be overriden for a given resource pool
+		resourcePrefix := rm.cliParams.resourcePrefix
+		if conf.ResourcePrefix != "" {
+			resourcePrefix = conf.ResourcePrefix
+		}
+
+		resourceName := resourcePrefix + "/" + conf.ResourceName
+
+		glog.Infof("validating resource name \"%s\"", resourceName)
+
+		// ensure that resource name is unique
+		if _, exists := resourceNames[resourceName]; exists {
 			// resource name already exist
-			glog.Errorf("resource name \"%s\" already exists", conf.ResourceName)
+			glog.Errorf("resource name \"%s\" already exists", resourceName)
 			return false
 		}
 
-		resourceName[conf.ResourceName] = conf.ResourceName
+		resourceNames[resourceName] = resourceName
 	}
 
 	return true
@@ -280,6 +291,72 @@ func (rm *resourceManager) addToLinkWatchList(pciAddr string) {
 			}
 		}
 	}
+}
+
+// applyFilters returned a subset PciNetDevices by applying given selectors values in the following orders:
+// "vendors", "devices", "drivers", "pfNames", "ddpProfiles".
+// Each selector gets a new sub-set of devices from the result of previous one.
+func (rm *resourceManager) getFilteredDevices(rc *types.ResourceConfig) []types.PciNetDevice {
+	filteredDevice := rm.netDeviceList
+
+	rf := rm.rFactory
+	// filter by vendor list
+	if rc.Selectors.Vendors != nil && len(rc.Selectors.Vendors) > 0 {
+		if selector, err := rf.GetSelector("vendors", rc.Selectors.Vendors); err == nil {
+			filteredDevice = selector.Filter(filteredDevice)
+		}
+	}
+
+	// filter by device list
+	if rc.Selectors.Devices != nil && len(rc.Selectors.Devices) > 0 {
+		if selector, err := rf.GetSelector("devices", rc.Selectors.Devices); err == nil {
+			filteredDevice = selector.Filter(filteredDevice)
+		}
+	}
+
+	// filter by driver list
+	if rc.Selectors.Drivers != nil && len(rc.Selectors.Drivers) > 0 {
+		if selector, err := rf.GetSelector("drivers", rc.Selectors.Drivers); err == nil {
+			filteredDevice = selector.Filter(filteredDevice)
+		}
+	}
+
+	// filter by PfNames list
+	if rc.Selectors.PfNames != nil && len(rc.Selectors.PfNames) > 0 {
+		if selector, err := rf.GetSelector("pfNames", rc.Selectors.PfNames); err == nil {
+			filteredDevice = selector.Filter(filteredDevice)
+		}
+	}
+
+	// filter by linkTypes list
+	if rc.Selectors.LinkTypes != nil && len(rc.Selectors.LinkTypes) > 0 {
+		if len(rc.Selectors.LinkTypes) > 1 {
+			glog.Warningf("Link type selector should have a single value.")
+		}
+		if selector, err := rf.GetSelector("linkTypes", rc.Selectors.LinkTypes); err == nil {
+			filteredDevice = selector.Filter(filteredDevice)
+		}
+	}
+
+	// filter by DDP Profiles list
+	if rc.Selectors.DDPProfiles != nil && len(rc.Selectors.DDPProfiles) > 0 {
+		if selector, err := rf.GetSelector("ddpProfiles", rc.Selectors.DDPProfiles); err == nil {
+			filteredDevice = selector.Filter(filteredDevice)
+		}
+	}
+
+	// filter for rdma devices
+	if rc.IsRdma {
+		rdmaDevices := make([]types.PciNetDevice, 0)
+		for _, dev := range filteredDevice {
+			if dev.GetRdmaSpec().IsRdma() {
+				rdmaDevices = append(rdmaDevices, dev)
+			}
+		}
+		filteredDevice = rdmaDevices
+	}
+
+	return filteredDevice
 }
 
 type linkWatcher struct {
