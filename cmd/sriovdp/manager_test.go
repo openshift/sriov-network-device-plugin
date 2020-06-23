@@ -1,21 +1,41 @@
+// Copyright 2020 Intel Corp. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"testing"
 
-	"github.com/intel/sriov-network-device-plugin/pkg/resources"
+	"github.com/intel/sriov-network-device-plugin/pkg/factory"
+	"github.com/intel/sriov-network-device-plugin/pkg/netdevice"
 	"github.com/intel/sriov-network-device-plugin/pkg/types"
-	fake "github.com/intel/sriov-network-device-plugin/pkg/types/mocks"
+	"github.com/intel/sriov-network-device-plugin/pkg/types/mocks"
 	"github.com/intel/sriov-network-device-plugin/pkg/utils"
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 )
+
+func TestSriovdp(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Sriovdp Suite")
+}
 
 func assertShouldFail(err error, shouldFail bool) {
 	if shouldFail {
@@ -203,42 +223,17 @@ var _ = Describe("Resource manager", func() {
 			})
 		})
 		Describe("managing resources servers", func() {
-			var rm *resourceManager
-			var mockedRf *fake.ResourceFactory
-			BeforeEach(func() {
-				mockedRf = &fake.ResourceFactory{}
-				rm = &resourceManager{
-					rFactory: mockedRf,
-					configList: []*types.ResourceConfig{
-						&types.ResourceConfig{ResourceName: "fake"},
-					},
-					resourceServers: []types.ResourceServer{},
-					netDeviceList:   []types.PciNetDevice{},
-				}
-			})
 			Describe("initializing servers", func() {
-				Context("when getting resource server fails", func() {
-					It("should return an error", func() {
-						mockedRf.
-							On("GetResourcePool", rm.configList[0], rm.netDeviceList).
-							Return(&fake.ResourcePool{}, nil).
-							On("GetResourceServer", &fake.ResourcePool{}).
-							Return(&fake.ResourceServer{}, fmt.Errorf("fake error"))
-
-						Expect(rm.initServers()).To(HaveOccurred())
-					})
-				})
 				Context("when initializing server fails", func() {
 					var (
-						mockedServer *fake.ResourceServer
+						mockedServer *mocks.ResourceServer
 					)
 					BeforeEach(func() {
-						mockedServer = &fake.ResourceServer{}
+						mockedServer = &mocks.ResourceServer{}
 						mockedServer.On("Init").Return(fmt.Errorf("fake error"))
-						mockedRf.
-							On("GetResourcePool", rm.configList[0], rm.netDeviceList).
-							Return(&fake.ResourcePool{}, nil).
-							On("GetResourceServer", &fake.ResourcePool{}).
+
+						mockedRf := &mocks.ResourceFactory{}
+						mockedRf.On("GetResourceServer", &mocks.ResourcePool{}).
 							Return(mockedServer, nil)
 					})
 					It("should not return an error", func() {
@@ -249,60 +244,71 @@ var _ = Describe("Resource manager", func() {
 					})
 				})
 				Context("when server is properly initialized", func() {
-					var (
-						mockedServer *fake.ResourceServer
-					)
-					BeforeEach(func() {
-						mockedServer = &fake.ResourceServer{}
-						mockedRf.
-							On("GetResourcePool", rm.configList[0], rm.netDeviceList).
-							Return(&fake.ResourcePool{}, nil).
-							On("GetResourceServer", &fake.ResourcePool{}).
-							Return(mockedServer, nil)
-						mockedServer.On("Init").Return(nil)
-					})
+					mockedServer := &mocks.ResourceServer{}
+					mockedServer.On("Init").Return(nil)
+
+					dev := &mocks.PciDevice{}
+					devs := []types.PciDevice{dev}
+
+					rc := &types.ResourceConfig{
+						ResourceName: "fake",
+						DeviceType:   types.NetDeviceType,
+						SelectorObj:  types.NetDeviceSelectors{},
+					}
+					dp := &mocks.DeviceProvider{}
+					dp.On("GetFilteredDevices", devs, rc).Return(devs, nil)
+
+					rp := &mocks.ResourcePool{}
+
+					mockedRf := &mocks.ResourceFactory{}
+					mockedRf.On("GetResourcePool", rc, devs).Return(rp, nil).
+						On("GetResourceServer", rp).Return(mockedServer, nil)
+
+					dp.On("GetDevices").Return(devs)
+					rm := &resourceManager{
+						rFactory:   mockedRf,
+						configList: []*types.ResourceConfig{rc},
+						deviceProviders: map[types.DeviceType]types.DeviceProvider{
+							types.NetDeviceType: dp,
+						},
+						resourceServers: []types.ResourceServer{},
+					}
+
+					err := rm.initServers()
+
 					It("should not return an error", func() {
-						Expect(rm.initServers()).NotTo(HaveOccurred())
+						Expect(err).NotTo(HaveOccurred())
 					})
 					It("should call Init() method on the server without getting errors", func() {
 						Expect(mockedServer.MethodCalled("Init")).To(Equal(mock.Arguments{nil}))
 					})
-					PIt("should end up with one element in the list of servers", func() {
-						Expect(rm.resourceServers).To(ContainElement(mockedServer))
+					It("should end up with one element in the list of servers", func() {
+						Expect(rm.resourceServers).To(HaveLen(1))
 					})
 				})
 			})
 		})
 	})
-	DescribeTable("checking whether device has default route",
-		func(fs *utils.FakeFilesystem, addr string, expected, shouldFail bool) {
-			defer fs.Use()()
-
-			actual, err := hasDefaultRoute(addr)
-			Expect(actual).To(Equal(expected))
-			assertShouldFail(err, shouldFail)
-		},
-		Entry("device doesn't exist", &utils.FakeFilesystem{}, "0000:00:00.0", false, true),
-		Entry("has interface in sys fs but netlink lib returns nil",
-			&utils.FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:00:00.0/net/invalid0"}},
-			"0000:00:00.0",
-			true, false,
-		),
-	)
 	DescribeTable("discovering devices",
 		func(fs *utils.FakeFilesystem) {
 			defer fs.Use()()
 			os.Setenv("GHW_CHROOT", fs.RootDir)
 			defer os.Unsetenv("GHW_CHROOT")
 
-			rf := resources.NewResourceFactory("fake", "fake", true)
+			rf := factory.NewResourceFactory("fake", "fake", true)
+
 			rm := &resourceManager{
 				rFactory: rf,
 				configList: []*types.ResourceConfig{
-					&types.ResourceConfig{ResourceName: "fake"},
+					&types.ResourceConfig{
+						ResourceName: "fake",
+						DeviceType:   types.NetDeviceType,
+					},
+				},
+				deviceProviders: map[types.DeviceType]types.DeviceProvider{
+					types.NetDeviceType: netdevice.NewNetDeviceProvider(rf),
 				},
 				resourceServers: []types.ResourceServer{},
-				netDeviceList:   []types.PciNetDevice{},
 			}
 
 			err := rm.discoverHostDevices()
@@ -383,89 +389,84 @@ var _ = Describe("Resource manager", func() {
 				},
 			},
 		),
-	)
-	DescribeTable("adding to link watch list",
-		func(fs *utils.FakeFilesystem, addr string, expected []types.LinkWatcher) {
-			defer fs.Use()()
-
-			rf := resources.NewResourceFactory("fake", "fake", true)
-			rm := &resourceManager{
-				rFactory: rf,
-				configList: []*types.ResourceConfig{
-					&types.ResourceConfig{ResourceName: "fake"},
+		Entry("VF device without PF and bound to dpdk driver",
+			&utils.FakeFilesystem{
+				Dirs: []string{
+					"sys/bus/pci/devices/0000:03:02.0",
+					"sys/bus/pci/devices/0000:03:02.1",
 				},
-				resourceServers: []types.ResourceServer{},
-				netDeviceList:   []types.PciNetDevice{},
-				linkWatchList:   make(map[string]types.LinkWatcher, 0),
+				Files: map[string][]byte{
+					"sys/bus/pci/devices/0000:03:02.0/modalias": []byte(
+						"pci:v00008086d0000154Csv00008086sd00000000bc02sc00i00",
+					),
+					"sys/bus/pci/devices/0000:03:02.1/modalias": []byte(
+						"pci:v00008086d0000154Csv00008086sd00000000bc02sc00i00",
+					),
+					"sys/bus/pci/devices/0000:03:02.0/max_vfs": []byte("0"),
+					"sys/bus/pci/devices/0000:03:02.1/max_vfs": []byte("0"),
+				},
+				Symlinks: map[string]string{
+					"sys/bus/pci/devices/0000:03:02.0/driver": "../../../../bus/pci/drivers/igb_uio",
+					"sys/bus/pci/devices/0000:03:02.1/driver": "../../../../bus/pci/drivers/igb_uio",
+				},
+			},
+		),
+	)
+	Describe("starting all server", func() {
+		Context("when resource servers are starting fine", func() {
+			rs := &mocks.ResourceServer{}
+			rs.On("Start").Return(nil).On("Watch").Return()
+
+			rm := resourceManager{
+				resourceServers: []types.ResourceServer{rs, rs, rs},
+				pluginWatchMode: false,
 			}
 
-			rm.addToLinkWatchList(addr)
-			Expect(rm.linkWatchList).To(ConsistOf(expected))
-		},
-		Entry("no network interfaces on the device",
-			&utils.FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:00:00.0"}},
-			"0000:00:00.0",
-			[]types.LinkWatcher{},
-		),
-		Entry("single network interface",
-			&utils.FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:00:00.0/net/fakenet0"}},
-			"0000:00:00.0",
-			[]types.LinkWatcher{&linkWatcher{ifName: "fakenet0"}},
-		),
-	)
-
-	Describe("getFilteredDevices", func() {
-		Context("with all types of selectors used", func() {
-			var (
-				devs []types.PciNetDevice
-				c    *types.ResourceConfig
-			)
-
-			BeforeEach(func() {
-				cp = &cliParams{
-					configFile:     "/tmp/sriovdp/test_config",
-					resourcePrefix: "test_",
-				}
-				rm = newResourceManager(cp)
-
-				devs = make([]types.PciNetDevice, 4)
-				vendors := []string{"8086", "8086", "8086", "1234"}
-				codes := []string{"1111", "1111", "1234", "4321"}
-				drivers := []string{"vfio-pci", "i40evf", "igb_uio", "igb_uio"}
-				pfNames := []string{"enp2s0f2", "ens0", "eth0", "net2"}
-				linkTypes := []string{"ether", "ether", "ether", "ether"}
-				ddpProfiles := []string{"GTP", "PPPoE", "GTP", "PPPoE"}
-				for i := range devs {
-					d := &fake.PciNetDevice{}
-					d.On("GetVendor").Return(vendors[i]).
-						On("GetDeviceCode").Return(codes[i]).
-						On("GetDriver").Return(drivers[i]).
-						On("GetPFName").Return(pfNames[i]).
-						On("GetLinkType").Return(linkTypes[i]).
-						On("GetPciAddr").Return("fake").
-						On("GetAPIDevice").Return(&pluginapi.Device{}).
-						On("GetDDPProfiles").Return(ddpProfiles[i])
-					devs[i] = d
-				}
-				rm.netDeviceList = devs
-
-				c = &types.ResourceConfig{
-					ResourceName: "fake",
-					Selectors: struct {
-						Vendors     []string `json:"vendors,omitempty"`
-						Devices     []string `json:"devices,omitempty"`
-						Drivers     []string `json:"drivers,omitempty"`
-						PfNames     []string `json:"pfNames,omitempty"`
-						LinkTypes   []string `json:"linkTypes,omitempty"`
-						DDPProfiles []string `json:"ddpProfiles,omitempty"`
-					}{[]string{"8086"}, []string{"1111"}, []string{"vfio-pci"}, []string{"enp2s0f2"}, []string{"ether"}, []string{"GTP"}},
-				}
-
+			err := rm.startAllServers()
+			It("shouldn't fail", func() {
+				Expect(err).NotTo(HaveOccurred())
 			})
-			It("should return valid resource pool", func() {
-				filteredDevices := rm.getFilteredDevices(c)
-				Expect(filteredDevices).NotTo(BeNil())
-				Expect(filteredDevices).To(HaveLen(1))
+		})
+		Context("when resource server start fails", func() {
+			rs := &mocks.ResourceServer{}
+			rs.On("Start").Return(fmt.Errorf("failed"))
+
+			rm := resourceManager{
+				resourceServers: []types.ResourceServer{rs},
+				pluginWatchMode: false,
+			}
+
+			err := rm.startAllServers()
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+	Describe("stopping all server", func() {
+		Context("when resource servers are stopping fine", func() {
+			rs := &mocks.ResourceServer{}
+			rs.On("Stop").Return(nil)
+
+			rm := resourceManager{
+				resourceServers: []types.ResourceServer{rs, rs, rs},
+			}
+
+			err := rm.stopAllServers()
+			It("shouldn't fail", func() {
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+		Context("when resource server stop fails", func() {
+			rs := &mocks.ResourceServer{}
+			rs.On("Stop").Return(fmt.Errorf("failed"))
+
+			rm := resourceManager{
+				resourceServers: []types.ResourceServer{rs},
+			}
+
+			err := rm.stopAllServers()
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})

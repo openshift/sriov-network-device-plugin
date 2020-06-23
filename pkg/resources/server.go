@@ -26,8 +26,8 @@ import (
 	"github.com/intel/sriov-network-device-plugin/pkg/types"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
-	registerapi "k8s.io/kubernetes/pkg/kubelet/apis/pluginregistration/v1"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	registerapi "k8s.io/kubelet/pkg/apis/pluginregistration/v1"
 )
 
 type resourceServer struct {
@@ -43,7 +43,8 @@ type resourceServer struct {
 	checkIntervals     int // health check intervals in seconds
 }
 
-func newResourceServer(prefix, suffix string, pluginWatch bool, rp types.ResourcePool) types.ResourceServer {
+// NewResourceServer returns an instance of ResourceServer
+func NewResourceServer(prefix, suffix string, pluginWatch bool, rp types.ResourcePool) types.ResourceServer {
 	sockName := fmt.Sprintf("%s_%s.%s", prefix, rp.GetResourceName(), suffix)
 	sockPath := filepath.Join(types.SockDir, sockName)
 	if !pluginWatch {
