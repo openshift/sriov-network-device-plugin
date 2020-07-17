@@ -1,23 +1,20 @@
-FROM golang:alpine as builder
+FROM arm64v8/golang:alpine as builder
 
 ADD . /usr/src/sriov-network-device-plugin
-ADD images/ddptool-1.0.0.0.tar.gz /tmp/ddptool/
 
 ENV HTTP_PROXY $http_proxy
 ENV HTTPS_PROXY $https_proxy
-RUN apk add --update --virtual build-dependencies build-base linux-headers && \
+RUN apk add --update --virtual build-dependencies build-base linux-headers make && \
     cd /usr/src/sriov-network-device-plugin && \
     make clean && \
-    make build && \
-    cd /tmp/ddptool && make
+    make build
 
-FROM alpine
+FROM arm64v8/alpine
 RUN apk add hwdata-pci
 COPY --from=builder /usr/src/sriov-network-device-plugin/build/sriovdp /usr/bin/
-COPY --from=builder /tmp/ddptool/ddptool /usr/bin/
 WORKDIR /
 
-LABEL io.k8s.display-name="SRIOV Network Device Plugin"
+LABEL io.k8s.display-name="SRIOV Network Device Plugin PPC64LE"
 
 ADD ./images/entrypoint.sh /
 
