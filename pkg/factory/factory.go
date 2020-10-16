@@ -85,6 +85,8 @@ func (rf *resourceFactory) GetSelector(attr string, values []string) (types.Devi
 		return resources.NewPciAddressSelector(values), nil
 	case "pfNames":
 		return resources.NewPfNameSelector(values), nil
+	case "rootDevices":
+		return resources.NewRootDeviceSelector(values), nil
 	case "linkTypes":
 		return resources.NewLinkTypeSelector(values), nil
 	case "ddpProfiles":
@@ -161,6 +163,8 @@ func (rf *resourceFactory) GetDeviceFilter(rc *types.ResourceConfig) (interface{
 		if err := json.Unmarshal(*rc.Selectors, netDeviceSelector); err != nil {
 			return nil, fmt.Errorf("error unmarshalling NetDevice selector bytes %v", err)
 		}
+
+		glog.Infof("net device selector for resource %s is %+v", rc.ResourceName, netDeviceSelector)
 		return netDeviceSelector, nil
 	case types.AcceleratorType:
 		accelDeviceSelector := &types.AccelDeviceSelectors{}
@@ -168,6 +172,8 @@ func (rf *resourceFactory) GetDeviceFilter(rc *types.ResourceConfig) (interface{
 		if err := json.Unmarshal(*rc.Selectors, accelDeviceSelector); err != nil {
 			return nil, fmt.Errorf("error unmarshalling Accelerator selector bytes %v", err)
 		}
+
+		glog.Infof("accelerator device selector for resource %s is %+v", rc.ResourceName, accelDeviceSelector)
 		return accelDeviceSelector, nil
 	default:
 		return nil, fmt.Errorf("unable to get deviceFilter, invalid deviceType %s", rc.DeviceType)
