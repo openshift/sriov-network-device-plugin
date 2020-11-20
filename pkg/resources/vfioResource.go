@@ -16,8 +16,8 @@ package resources
 
 import (
 	"github.com/golang/glog"
-	"github.com/intel/sriov-network-device-plugin/pkg/types"
-	"github.com/intel/sriov-network-device-plugin/pkg/utils"
+	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types"
+	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/utils"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
@@ -50,13 +50,13 @@ func (rp *vfioResource) GetDeviceSpecs(pciAddr string) []*pluginapi.DeviceSpec {
 		Permissions:   "mrw",
 	})
 
-	vfioDev, err := utils.GetVFIODeviceFile(pciAddr)
+	vfioDevHost, vfioDevContainer, err := utils.GetVFIODeviceFile(pciAddr)
 	if err != nil {
-		glog.Errorf("GetDeviceSpecs(): error getting vfio device file for device: %s", pciAddr)
+		glog.Errorf("GetDeviceSpecs(): error getting vfio device file for device: %s, %s", pciAddr, err.Error())
 	} else {
 		devSpecs = append(devSpecs, &pluginapi.DeviceSpec{
-			HostPath:      vfioDev,
-			ContainerPath: vfioDev,
+			HostPath:      vfioDevHost,
+			ContainerPath: vfioDevContainer,
 			Permissions:   "mrw",
 		})
 	}

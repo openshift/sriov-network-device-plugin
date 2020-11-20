@@ -1,7 +1,7 @@
 
 # SR-IOV Network device plugin for Kubernetes
 
-[![Travis CI](https://travis-ci.org/intel/sriov-network-device-plugin.svg?branch=master)](https://travis-ci.org/intel/sriov-network-device-plugin/builds) [![Go Report Card](https://goreportcard.com/badge/github.com/intel/sriov-network-device-plugin)](https://goreportcard.com/report/github.com/intel/sriov-network-device-plugin)
+[![Travis CI](https://travis-ci.org/k8snetworkplumbingwg/sriov-network-device-plugin.svg?branch=master)](https://travis-ci.org/k8snetworkplumbingwg/sriov-network-device-plugin/builds) [![Go Report Card](https://goreportcard.com/badge/github.com/k8snetworkplumbingwg/sriov-network-device-plugin)](https://goreportcard.com/report/github.com/k8snetworkplumbingwg/sriov-network-device-plugin) [![Weekly minutes](https://img.shields.io/badge/Weekly%20Meeting%20Minutes-Mon%203pm%20GMT-blue.svg?style=plastic)](https://docs.google.com/document/d/1sJQMHbxZdeYJPgAWK1aSt6yzZ4K_8es7woVIrwinVwI)
 
 ## Table of Contents
 
@@ -23,6 +23,7 @@
   - [Command line arguments](#command-line-arguments)
   - [Assumptions](#assumptions)
   - [Workflow](#workflow)
+- [Virtual Deployments](#virtual-deployments)
 - [Example deployments](#example-deployments)
     - [Deploy the Device Plugin](#deploy-the-device-plugin)
     - [Deploy SR-IOV workloads when Multus is used](#deploy-sr-iov-workloads-when-multus-is-used)
@@ -51,6 +52,7 @@ The SR-IOV network device plugin is Kubernetes device plugin for discovering and
 - Detects Kubelet restarts and auto-re-register
 - Detects Link status (for Linux network devices) and updates associated VFs health accordingly
 - Extensible to support new device types with minimal effort if not already supported
+- Works within virtual deployments of Kubernetes that do not have virtualized-iommu support (VFIO No-IOMMU support)
 
 To deploy workloads with SR-IOV VF this plugin needs to work together with the following two CNI components:
 
@@ -94,7 +96,7 @@ Before starting the SR-IOV device plugin you will need to create SR-IOV Virtual 
 
 1. Compile SR-IOV-CNI (supported from release 2.0+):
 ```
-$ git clone https://github.com/intel/sriov-cni.git
+$ git clone https://github.com/k8snetworkplumbingwg/sriov-cni.git
 $ cd sriov-cni
 $ make
 $ cp build/sriov /opt/cni/bin
@@ -108,7 +110,7 @@ If you want to build the docker image locally then follow the following steps:
 
  1. Clone the sriov-network-device-plugin
  ```
-$ git clone https://github.com/intel/sriov-network-device-plugin.git
+$ git clone https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin.git
 $ cd sriov-network-device-plugin
  ```
  2. Build docker image binary using `make`
@@ -366,6 +368,18 @@ $ kubectl get node node1 -o json | jq '.status.allocatable'
 }
 
 ```
+## Virtual Deployments
+
+SR-IOV network device plugin supports running in a virtualized environment.  However, not all device selectors are 
+applicable as the VFs are passthrough to the VM without any association to their respective PF, hence any device 
+selector that relies on the association between a VF and its PF will not work and therefore the _pfNames_ and 
+_rootDevices_ extended selectors will not work in a virtual deployment.  The common selector _pciAddress_ can be 
+used to select the virtual device.
+
+### Virtual environments with no iommu
+
+SR-IOV network device plugin supports allocating VFIO devices in a virtualized environment without a virtualized iommu.
+For more information refer to [this](./docs/dpdk/README-virt.md).
 
 ## Example deployments
 
