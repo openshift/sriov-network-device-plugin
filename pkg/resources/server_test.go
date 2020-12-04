@@ -52,12 +52,15 @@ var _ = Describe("Server", func() {
 	})
 	DescribeTable("registering with Kubelet",
 		func(shouldRunServer, shouldEnablePluginWatch, shouldServerFail, shouldFail bool) {
+			t := GinkgoT()
 			var err error
 			fs := &utils.FakeFilesystem{}
 			defer fs.Use()()
 			rp := mocks.ResourcePool{}
 			rp.On("Probe").Return(false)
 			rp.On("GetResourceName").Return("fakename")
+			rp.On("StoreDeviceInfoFile", "fakeprefix").Return(nil)
+			rp.On("CleanDeviceInfoFile", "fakeprefix").Return(nil)
 
 			// Use faked dir as socket dir
 			types.SockDir = fs.RootDir
@@ -72,6 +75,8 @@ var _ = Describe("Server", func() {
 			if shouldRunServer {
 				if shouldEnablePluginWatch {
 					rs.Start()
+					rp.AssertCalled(t, "CleanDeviceInfoFile", "fakeprefix")
+					rp.AssertCalled(t, "StoreDeviceInfoFile", "fakeprefix")
 				} else {
 					os.MkdirAll(pluginapi.DevicePluginPath, 0755)
 					registrationServer.start()
@@ -121,9 +126,9 @@ var _ = Describe("Server", func() {
 		// integration-like test for the resource server (positive cases)
 		var (
 			fakeConf *types.ResourceConfig
-			rp       mocks.ResourcePool
 			fs       *utils.FakeFilesystem
 		)
+		t := GinkgoT()
 		BeforeEach(func() {
 			var selectors json.RawMessage
 			err := selectors.UnmarshalJSON([]byte(`[{"devices": ["fakeid"]}]`))
@@ -133,12 +138,6 @@ var _ = Describe("Server", func() {
 				ResourceName: "fake",
 				Selectors:    &selectors,
 			}
-			rp = mocks.ResourcePool{}
-			rp.On("GetConfig").Return(fakeConf).
-				On("GetResourceName").Return("fake.com").
-				On("DiscoverDevices").Return(nil).
-				On("GetDevices").Return(map[string]*pluginapi.Device{}).
-				On("Probe").Return(true)
 			fs = &utils.FakeFilesystem{}
 		})
 		Context("starting, restarting and stopping the resource server", func() {
@@ -146,6 +145,14 @@ var _ = Describe("Server", func() {
 				defer fs.Use()()
 				// Use faked dir as socket dir
 				types.DeprecatedSockDir = fs.RootDir
+				rp := mocks.ResourcePool{}
+				rp.On("GetConfig").Return(fakeConf).
+					On("GetResourceName").Return("fake.com").
+					On("DiscoverDevices").Return(nil).
+					On("GetDevices").Return(map[string]*pluginapi.Device{}).
+					On("Probe").Return(true).
+					On("StoreDeviceInfoFile", "fake").Return(nil).
+					On("CleanDeviceInfoFile", "fake").Return(nil)
 
 				// Create ResourceServer with plugin watch mode disabled
 				rs := NewResourceServer("fake", "fake", false, &rp).(*resourceServer)
@@ -153,6 +160,7 @@ var _ = Describe("Server", func() {
 				registrationServer := createFakeRegistrationServer(fs.RootDir,
 					"fake_fake.com.fake", false, false)
 				os.MkdirAll(pluginapi.DevicePluginPath, 0755)
+
 				registrationServer.start()
 				defer registrationServer.stop()
 
@@ -164,8 +172,10 @@ var _ = Describe("Server", func() {
 				Eventually(rs.termSignal, time.Second*10).Should(Receive())
 
 				go func() {
+					rp.On("CleanDeviceInfoFile", "fake").Return(nil)
 					err := rs.Stop()
 					Expect(err).NotTo(HaveOccurred())
+					rp.AssertCalled(t, "CleanDeviceInfoFile", "fake")
 				}()
 				Eventually(rs.termSignal, time.Second*10).Should(Receive())
 				Eventually(rs.stopWatcher, time.Second*10).Should(Receive())
@@ -177,6 +187,14 @@ var _ = Describe("Server", func() {
 				// Use faked dir as socket dir
 				types.SockDir = fs.RootDir
 
+				rp := mocks.ResourcePool{}
+				rp.On("GetConfig").Return(fakeConf).
+					On("GetResourceName").Return("fake.com").
+					On("DiscoverDevices").Return(nil).
+					On("GetDevices").Return(map[string]*pluginapi.Device{}).
+					On("Probe").Return(true).
+					On("StoreDeviceInfoFile", "fake").Return(nil).
+					On("CleanDeviceInfoFile", "fake").Return(nil)
 				// Create ResourceServer with plugin watch mode enabled
 				rs := NewResourceServer("fake", "fake", true, &rp).(*resourceServer)
 
@@ -189,8 +207,10 @@ var _ = Describe("Server", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				go func() {
+					rp.On("CleanDeviceInfoFile", "fake").Return(nil)
 					err := rs.Stop()
 					Expect(err).NotTo(HaveOccurred())
+					rp.AssertCalled(t, "CleanDeviceInfoFile", "fake")
 				}()
 				Eventually(rs.termSignal, time.Second*10).Should(Receive())
 
@@ -202,9 +222,17 @@ var _ = Describe("Server", func() {
 				defer fs.Use()()
 				// Use faked dir as socket dir
 				types.DeprecatedSockDir = fs.RootDir
+				rp := mocks.ResourcePool{}
+				rp.On("GetConfig").Return(fakeConf).
+					On("GetResourceName").Return("fake.com").
+					On("DiscoverDevices").Return(nil).
+					On("GetDevices").Return(map[string]*pluginapi.Device{}).
+					On("Probe").Return(true).
+					On("StoreDeviceInfoFile", "fake").Return(nil).
+					On("CleanDeviceInfoFile", "fake").Return(nil)
 
 				// Create ResourceServer with plugin watch mode disabled
-				rs := NewResourceServer("fake.com", "fake", false, &rp).(*resourceServer)
+				rs := NewResourceServer("fake", "fake", false, &rp).(*resourceServer)
 
 				registrationServer := createFakeRegistrationServer(fs.RootDir,
 					"fake_fake.com.fake", false, false)
