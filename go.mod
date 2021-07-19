@@ -14,8 +14,13 @@ require (
 	github.com/stretchr/testify v1.5.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974
+	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
 	google.golang.org/grpc v1.28.1
 	k8s.io/kubelet v0.18.1
 )
 
-replace github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+replace (
+	github.com/containernetworking/cni => github.com/containernetworking/cni v0.8.1
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+)
+
