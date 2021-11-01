@@ -39,7 +39,6 @@ type cliParams struct {
 type resourceManager struct {
 	cliParams
 	pluginWatchMode bool
-	socketSuffix    string
 	rFactory        types.ResourceFactory
 	configList      []*types.ResourceConfig
 	resourceServers []types.ResourceServer
@@ -68,15 +67,13 @@ func newResourceManager(cp *cliParams) *resourceManager {
 	}
 }
 
-//readConfig reads and validate configurations from Config file
+// readConfig reads and validate configurations from Config file
 func (rm *resourceManager) readConfig() error {
-
 	resources := &types.ResourceConfList{}
 	rawBytes, err := ioutil.ReadFile(rm.configFile)
 
 	if err != nil {
 		return fmt.Errorf("error reading file %s, %v", rm.configFile, err)
-
 	}
 
 	glog.Infof("raw ResourceList: %s", rawBytes)
@@ -89,11 +86,8 @@ func (rm *resourceManager) readConfig() error {
 		// Validate deviceType
 		if conf.DeviceType == "" {
 			conf.DeviceType = types.NetDeviceType // Default to NetDeviceType
-		} else {
-			// Check if the DeviceType is supported
-			if _, ok := types.SupportedDevices[conf.DeviceType]; !ok {
-				return fmt.Errorf("unsupported deviceType:  \"%s\"", conf.DeviceType)
-			}
+		} else if _, ok := types.SupportedDevices[conf.DeviceType]; !ok {
+			return fmt.Errorf("unsupported deviceType:  \"%s\"", conf.DeviceType)
 		}
 		if conf.SelectorObj, err = rm.rFactory.GetDeviceFilter(conf); err == nil {
 			rm.configList = append(rm.configList, &resources.ResourceList[i])
@@ -101,7 +95,6 @@ func (rm *resourceManager) readConfig() error {
 			glog.Warningf("unable to get SelectorObj from selectors list:'%s' for deviceType: %s error: %s",
 				*conf.Selectors, conf.DeviceType, err)
 		}
-
 	}
 	glog.Infof("unmarshalled ResourceList: %+v", resources.ResourceList)
 	return nil
@@ -110,6 +103,7 @@ func (rm *resourceManager) readConfig() error {
 func (rm *resourceManager) initServers() error {
 	rf := rm.rFactory
 	glog.Infof("number of config: %d\n", len(rm.configList))
+	deviceAllocated := make(map[string]bool)
 	for _, rc := range rm.configList {
 		// Create new ResourcePool
 		glog.Infof("")
@@ -130,12 +124,12 @@ func (rm *resourceManager) initServers() error {
 			glog.Infof("no devices in device pool, skipping creating resource server for %s", rc.ResourceName)
 			continue
 		}
+		filteredDevices = rm.excludeAllocatedDevices(filteredDevices, deviceAllocated)
 		rPool, err := rm.rFactory.GetResourcePool(rc, filteredDevices)
 		if err != nil {
 			glog.Errorf("initServers(): error creating ResourcePool with config %+v: %q", rc, err)
 			return err
 		}
-
 		// Create ResourceServer with this ResourcePool
 		s, err := rf.GetResourceServer(rPool)
 		if err != nil {
@@ -146,6 +140,19 @@ func (rm *resourceManager) initServers() error {
 		rm.resourceServers = append(rm.resourceServers, s)
 	}
 	return nil
+}
+
+func (rm *resourceManager) excludeAllocatedDevices(filteredDevices []types.PciDevice, deviceAllocated map[string]bool) []types.PciDevice {
+	filteredDevicesTemp := []types.PciDevice{}
+	for _, dev := range filteredDevices {
+		if !deviceAllocated[dev.GetPciAddr()] {
+			deviceAllocated[dev.GetPciAddr()] = true
+			filteredDevicesTemp = append(filteredDevicesTemp, dev)
+		} else {
+			glog.Warningf("Cannot add PCI Address [%s]. Already allocated.", dev.GetPciAddr())
+		}
+	}
+	return filteredDevicesTemp
 }
 
 func (rm *resourceManager) startAllServers() error {
@@ -182,7 +189,7 @@ func (rm *resourceManager) validConfigs() bool {
 			return false
 		}
 
-		// resourcePrefix might be overriden for a given resource pool
+		// resourcePrefix might be overridden for a given resource pool
 		resourcePrefix := rm.cliParams.resourcePrefix
 		if conf.ResourcePrefix != "" {
 			resourcePrefix = conf.ResourcePrefix
@@ -212,7 +219,6 @@ func (rm *resourceManager) validConfigs() bool {
 }
 
 func (rm *resourceManager) discoverHostDevices() error {
-
 	pci, err := ghw.PCI()
 	if err != nil {
 		return fmt.Errorf("discoverDevices(): error getting PCI info: %v", err)
@@ -225,7 +231,9 @@ func (rm *resourceManager) discoverHostDevices() error {
 
 	for k, v := range types.SupportedDevices {
 		if dp, ok := rm.deviceProviders[k]; ok {
-			dp.AddTargetDevices(devices, v)
+			if err := dp.AddTargetDevices(devices, v); err != nil {
+				glog.Errorf("adding supported device identifier '%d' to device provider failed: %s", v, err.Error())
+			}
 		}
 	}
 	return nil

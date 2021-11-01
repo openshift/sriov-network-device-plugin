@@ -15,6 +15,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -22,9 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types"
-	"golang.org/x/net/context"
+
+	"github.com/golang/glog"
 	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	registerapi "k8s.io/kubelet/pkg/apis/pluginregistration/v1"
@@ -42,6 +43,11 @@ type resourceServer struct {
 	stopWatcher        chan bool
 	checkIntervals     int // health check intervals in seconds
 }
+
+const (
+	rsWatchInterval    = 5 * time.Second
+	serverStartTimeout = 5 * time.Second
+)
 
 // NewResourceServer returns an instance of ResourceServer
 func NewResourceServer(prefix, suffix string, pluginWatch bool, rp types.ResourcePool) types.ResourceServer {
@@ -65,11 +71,8 @@ func NewResourceServer(prefix, suffix string, pluginWatch bool, rp types.Resourc
 }
 
 func (rs *resourceServer) register() error {
-	kubeletEndpoint := filepath.Join(types.DeprecatedSockDir, types.KubeEndPoint)
-	conn, err := grpc.Dial(kubeletEndpoint, grpc.WithInsecure(),
-		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-			return net.DialTimeout("unix", addr, timeout)
-		}))
+	kubeletEndpoint := "unix:" + filepath.Join(types.DeprecatedSockDir, types.KubeEndPoint)
+	conn, err := grpc.Dial(kubeletEndpoint, grpc.WithInsecure())
 	if err != nil {
 		glog.Errorf("%s device plugin unable connect to Kubelet : %v", rs.resourcePool.GetResourceName(), err)
 		return err
@@ -101,7 +104,8 @@ func (rs *resourceServer) GetInfo(ctx context.Context, rqt *registerapi.InfoRequ
 	return pluginInfoResponse, nil
 }
 
-func (rs *resourceServer) NotifyRegistrationStatus(ctx context.Context, regstat *registerapi.RegistrationStatus) (*registerapi.RegistrationStatusResponse, error) {
+func (rs *resourceServer) NotifyRegistrationStatus(ctx context.Context,
+	regstat *registerapi.RegistrationStatus) (*registerapi.RegistrationStatusResponse, error) {
 	if regstat.PluginRegistered {
 		glog.Infof("Plugin: %s gets registered successfully at Kubelet\n", rs.endPoint)
 	} else {
@@ -125,8 +129,7 @@ func (rs *resourceServer) Allocate(ctx context.Context, rqt *pluginapi.AllocateR
 	return resp, nil
 }
 
-func (rs *resourceServer) ListAndWatch(emtpy *pluginapi.Empty, stream pluginapi.DevicePlugin_ListAndWatchServer) error {
-
+func (rs *resourceServer) ListAndWatch(empty *pluginapi.Empty, stream pluginapi.DevicePlugin_ListAndWatchServer) error {
 	methodID := fmt.Sprintf("ListAndWatch(%s)", rs.resourcePool.GetResourceName()) // for logging purpose
 	glog.Infof("%s invoked", methodID)
 	// Send initial list of devices
@@ -165,12 +168,12 @@ func (rs *resourceServer) ListAndWatch(emtpy *pluginapi.Empty, stream pluginapi.
 				glog.Errorf("%s: error: cannot update device states: %v\n", methodID, err)
 				return err
 			}
-
 		}
 	}
 }
 
-func (rs *resourceServer) PreStartContainer(ctx context.Context, psRqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+func (rs *resourceServer) PreStartContainer(ctx context.Context,
+	psRqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
 }
 
@@ -206,14 +209,15 @@ func (rs *resourceServer) Start() error {
 	}
 	pluginapi.RegisterDevicePluginServer(rs.grpcServer, rs)
 
-	go rs.grpcServer.Serve(lis)
+	go func() {
+		err := rs.grpcServer.Serve(lis)
+		if err != nil {
+			glog.Errorf("serving incoming requests failed: %s", err.Error())
+		}
+	}()
 	// Wait for server to start by launching a blocking connection
-	conn, err := grpc.Dial(rs.sockPath, grpc.WithInsecure(), grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
-		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-			return net.DialTimeout("unix", addr, timeout)
-		}),
-	)
+	ctx, _ := context.WithTimeout(context.TODO(), serverStartTimeout)
+	conn, err := grpc.DialContext(ctx, "unix:"+rs.sockPath, grpc.WithInsecure(), grpc.WithBlock())
 
 	if err != nil {
 		glog.Errorf("error. unable to establish test connection with %s gRPC server: %v", resourceName, err)
@@ -292,7 +296,7 @@ func (rs *resourceServer) Watch() {
 			}
 		}
 		// Sleep for some intervals; TODO: investigate on suggested interval
-		time.Sleep(time.Second * time.Duration(5))
+		time.Sleep(rsWatchInterval)
 	}
 }
 
@@ -315,7 +319,6 @@ func (rs *resourceServer) triggerUpdate() {
 	if rs.checkIntervals > 0 {
 		go func() {
 			for {
-				// changed := rp.Probe(rs.resourcePool.GetConfig(), rp.GetDevices())
 				changed := rp.Probe()
 				if changed {
 					rs.updateSignal <- true
@@ -327,12 +330,9 @@ func (rs *resourceServer) triggerUpdate() {
 }
 
 func (rs *resourceServer) getEnvs(deviceIDs []string) map[string]string {
-
 	envs := make(map[string]string)
-
 	key := fmt.Sprintf("%s_%s_%s", "PCIDEVICE", rs.resourceNamePrefix, rs.resourcePool.GetResourceName())
 	key = strings.ToUpper(strings.Replace(key, ".", "_", -1))
-
 	envVals := rs.resourcePool.GetEnvs(deviceIDs)
 	values := ""
 	lastIndex := len(envVals) - 1
