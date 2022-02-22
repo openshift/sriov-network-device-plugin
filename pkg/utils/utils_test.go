@@ -22,7 +22,7 @@ var _ = Describe("In the utils package", func() {
 			Expect(actual).To(Equal(expected))
 			assertShouldFail(err, shouldFail)
 		},
-		Entry("address of a PF is passed", &FakeFilesystem{}, "0000:00:00.0", "0000:00:00.0", false),
+		Entry("address of a PF is not passed when it's a PF", &FakeFilesystem{}, "0000:00:00.0", "", false),
 		Entry("physfn is not a symlink",
 			&FakeFilesystem{
 				Dirs:  []string{"sys/bus/pci/devices/0000:00:00.0"},
@@ -241,7 +241,7 @@ var _ = Describe("In the utils package", func() {
 		),
 	)
 
-	DescribeTable("checking that device PCI addres is valid and device exists",
+	DescribeTable("checking that device PCI address is valid and device exists",
 		func(fs *FakeFilesystem, addr, expected string, shouldFail bool) {
 			defer fs.Use()()
 			actual, err := ValidPciAddr(addr)
@@ -402,27 +402,26 @@ var _ = Describe("In the utils package", func() {
 			Expect(actual).To(Equal(expected))
 			assertShouldFail(err, shouldFail)
 		},
-		Entry("device doesn't exist", &FakeFilesystem{}, "0000:01:10.0", nil, true),
+		Entry("device doesn't exist", &FakeFilesystem{}, "0000:01:10.0", "", false),
 		Entry("device is a VF and interface name exists",
-			&FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:01:10.0/physfn/net/fakePF"}},
-			"0000:01:10.0", "fakePF", false,
+			&FakeFilesystem{
+				Dirs: []string{
+					"sys/bus/pci/devices/0000:01:10.0",
+					"sys/bus/pci/devices/0000:01:00.0/net/fakePF",
+				},
+				Symlinks: map[string]string{
+					"sys/bus/pci/devices/0000:01:10.0/physfn/": "../0000:01:00.0",
+				},
+			}, "0000:01:10.0", "fakePF", false,
 		),
 		Entry("device is a VF and interface name does not exist",
 			&FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:01:10.0/physfn/net/"}},
 			"0000:01:10.0", "", true,
 		),
-		Entry("device is a PF and interface name exists",
-			&FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:01:10.0/net/fakeIF"}},
-			"0000:01:10.0", "fakeIF", false,
-		),
-		Entry("device is a PF interface name does not exist",
-			&FakeFilesystem{Dirs: []string{"sys/bus/pci/devices/0000:01:10.0/net/fakeIF"}},
-			"0000:01:10.0", "fakeIF", false,
-		),
-		Entry("net is not a directory at all",
+		Entry("pf net is not a directory at all",
 			&FakeFilesystem{
-				Dirs:  []string{"sys/bus/pci/devices/0000:01:10.0"},
-				Files: map[string][]byte{"sys/bus/pci/devices/0000:01:10.0/net": []byte("junk")},
+				Dirs:  []string{"sys/bus/pci/devices/0000:01:10.0/physfn"},
+				Files: map[string][]byte{"sys/bus/pci/devices/0000:01:10.0/physfn/net/": []byte("junk")},
 			},
 			"0000:01:10.0", "", true,
 		),
