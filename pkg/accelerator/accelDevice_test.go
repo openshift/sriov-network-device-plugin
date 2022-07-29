@@ -19,6 +19,7 @@ import (
 
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/accelerator"
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/factory"
+	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types"
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/utils"
 
 	. "github.com/onsi/ginkgo"
@@ -46,15 +47,15 @@ var _ = Describe("Accelerator", func() {
 
 				f := factory.NewResourceFactory("fake", "fake", true)
 				in := &ghw.PCIDevice{Address: "0000:00:00.1"}
+				config := &types.ResourceConfig{}
 
-				out, err := accelerator.NewAccelDevice(in, f)
+				out, err := accelerator.NewAccelDevice(in, f, config)
 
 				// TODO: assert other fields once implemented
 				Expect(out.GetDriver()).To(Equal("vfio-pci"))
 				Expect(out.GetEnvVal()).To(Equal("0000:00:00.1"))
 				Expect(out.GetDeviceSpecs()).To(HaveLen(2)) // /dev/vfio/vfio0 and default /dev/vfio/vfio
 				Expect(out.GetAPIDevice().Topology.Nodes[0].ID).To(Equal(int64(0)))
-				Expect(out.GetNumaInfo()).To(Equal("0"))
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("should not populate topology due to negative numa_node", func() {
@@ -75,11 +76,11 @@ var _ = Describe("Accelerator", func() {
 
 				f := factory.NewResourceFactory("fake", "fake", true)
 				in := &ghw.PCIDevice{Address: "0000:00:00.1"}
+				config := &types.ResourceConfig{}
 
-				out, err := accelerator.NewAccelDevice(in, f)
+				out, err := accelerator.NewAccelDevice(in, f, config)
 
 				Expect(out.GetAPIDevice().Topology).To(BeNil())
-				Expect(out.GetNumaInfo()).To(Equal(""))
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("should not populate topology due to missing numa_node", func() {
@@ -99,11 +100,36 @@ var _ = Describe("Accelerator", func() {
 
 				f := factory.NewResourceFactory("fake", "fake", true)
 				in := &ghw.PCIDevice{Address: "0000:00:00.1"}
+				config := &types.ResourceConfig{}
 
-				out, err := accelerator.NewAccelDevice(in, f)
+				out, err := accelerator.NewAccelDevice(in, f, config)
 
 				Expect(out.GetAPIDevice().Topology).To(BeNil())
-				Expect(out.GetNumaInfo()).To(Equal(""))
+				Expect(err).NotTo(HaveOccurred())
+			})
+			It("should not populate topology due to config excluding topology being set", func() {
+				fs := &utils.FakeFilesystem{
+					Dirs: []string{
+						"sys/bus/pci/devices/0000:00:00.1/net/eth0",
+						"sys/kernel/iommu_groups/0",
+						"sys/bus/pci/drivers/vfio-pci",
+					},
+					Symlinks: map[string]string{
+						"sys/bus/pci/devices/0000:00:00.1/iommu_group": "../../../../kernel/iommu_groups/0",
+						"sys/bus/pci/devices/0000:00:00.1/driver":      "../../../../bus/pci/drivers/vfio-pci",
+					},
+					Files: map[string][]byte{"sys/bus/pci/devices/0000:00:00.1/numa_node": []byte("1")},
+				}
+				defer fs.Use()()
+				utils.SetDefaultMockNetlinkProvider()
+
+				f := factory.NewResourceFactory("fake", "fake", true)
+				in := &ghw.PCIDevice{Address: "0000:00:00.1"}
+				config := &types.ResourceConfig{ExcludeTopology: true}
+
+				out, err := accelerator.NewAccelDevice(in, f, config)
+
+				Expect(out.GetAPIDevice().Topology).To(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
@@ -120,8 +146,9 @@ var _ = Describe("Accelerator", func() {
 				in := &ghw.PCIDevice{
 					Address: "0000:00:00.1",
 				}
+				config := &types.ResourceConfig{}
 
-				dev, err := accelerator.NewAccelDevice(in, f)
+				dev, err := accelerator.NewAccelDevice(in, f, config)
 
 				Expect(dev).To(BeNil())
 				Expect(err).To(HaveOccurred())
@@ -143,8 +170,9 @@ var _ = Describe("Accelerator", func() {
 				in := &ghw.PCIDevice{
 					Address: "0000:00:00.1",
 				}
+				config := &types.ResourceConfig{}
 
-				dev, err := accelerator.NewAccelDevice(in, f)
+				dev, err := accelerator.NewAccelDevice(in, f, config)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(dev).NotTo(BeNil())
 				Expect(dev.GetEnvVal()).To(Equal("0000:00:00.1"))

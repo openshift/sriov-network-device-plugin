@@ -2,6 +2,7 @@
 # SR-IOV Network Device Plugin for Kubernetes
 
 [![Travis CI](https://travis-ci.org/k8snetworkplumbingwg/sriov-network-device-plugin.svg?branch=master)](https://travis-ci.org/k8snetworkplumbingwg/sriov-network-device-plugin/builds) [![Go Report Card](https://goreportcard.com/badge/github.com/k8snetworkplumbingwg/sriov-network-device-plugin)](https://goreportcard.com/report/github.com/k8snetworkplumbingwg/sriov-network-device-plugin) [![Weekly minutes](https://img.shields.io/badge/Weekly%20Meeting%20Minutes-Mon%203pm%20GMT-blue.svg?style=plastic)](https://docs.google.com/document/d/1sJQMHbxZdeYJPgAWK1aSt6yzZ4K_8es7woVIrwinVwI)
+[![Coverage Status](https://coveralls.io/repos/github/k8snetworkplumbingwg/sriov-network-device-plugin/badge.svg?branch=master)](https://coveralls.io/github/k8snetworkplumbingwg/sriov-network-device-plugin?branch=master)
 
 ## Table of Contents
 
@@ -214,6 +215,7 @@ This plugin creates device plugin endpoints based on the configurations given in
 | "resourceName"   | Y        | Endpoint resource name. Should not contain special characters including hyphens and must be unique in the scope of the resource prefix | string                                                | "sriov_net_A"                                                   |
 | "resourcePrefix" | N        | Endpoint resource prefix name override. Should not contain special characters                                     | string Default : "intel.com"                          | "yourcompany.com"                                               |
 | "deviceType"     | N        | Device Type for a resource pool.                                                                                  | string value of supported types. Default: "netDevice" | Currently supported values: "accelerator", "netDevice"          |
+| "excludeTopology" | N       | Exclude advertising of device's NUMA topology          | bool Default: "false"    | "excludeTopology": true          |
 | "selectors"      | N        | A map of device selectors. The "deviceType" value determines the "selectors" options.                             | json object as string Default: null                   | Example: "selectors": {"vendors": ["8086"],"devices": ["154c"]} |
 
 

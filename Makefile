@@ -10,7 +10,9 @@ GOLINT = $(GOBIN)/golint
 GOCOVMERGE = $(GOBIN)/gocovmerge
 GOCOV = $(GOBIN)/gocov
 GOCOVXML = $(GOBIN)/gocov-xml
+GCOV2LCOV = $(GOBIN)/gcov2lcov
 GO2XUNIT = $(GOBIN)/go2xunit
+GOMOCKERY = $(GOBIN)/mockery
 # Package info
 BINARY_NAME=sriovdp
 PACKAGE=sriov-network-device-plugin
@@ -72,19 +74,25 @@ $(BUILDDIR)/$(BINARY_NAME): $(GOFILES) | $(BUILDDIR)
 	@cd $(BASE)/cmd/$(BINARY_NAME) && CGO_ENABLED=0 go build $(LDFLAGS) -o $(BUILDDIR)/$(BINARY_NAME) -tags no_openssl -v
 
 $(GOLINT): | $(BASE) ; $(info  building golint...)
-	$Q go get -u golang.org/x/lint/golint
+	$Q go install golang.org/x/lint/golint@latest
 
 $(GOCOVMERGE): | $(BASE) ; $(info  building gocovmerge...)
-	$Q go get github.com/wadey/gocovmerge
+	$Q go install github.com/wadey/gocovmerge@latest
 
 $(GOCOV): | $(BASE) ; $(info  building gocov...)
-	$Q go get github.com/axw/gocov/...
+	$Q go install github.com/axw/gocov/gocov@v1.1.0
+
+$(GCOV2LCOV): | $(BASE) ; $(info  building gcov2lcov...)
+	$Q go install github.com/jandelgado/gcov2lcov@latest
 
 $(GOCOVXML): | $(BASE) ; $(info  building gocov-xml...)
-	$Q go get github.com/AlekSi/gocov-xml
+	$Q go install github.com/AlekSi/gocov-xml@latest
 
 $(GO2XUNIT): | $(BASE) ; $(info  building go2xunit...)
-	$Q go get github.com/tebeka/go2xunit
+	$Q go install github.com/tebeka/go2xunit@latest
+
+$(GOMOCKERY): | $(BASE) ; $(info  building go2xunit...)
+	$Q go install github.com/vektra/mockery/v2@latest
 
 TEST_TARGETS := test-default test-bench test-short test-verbose test-race
 .PHONY: $(TEST_TARGETS) test-xml check test tests
@@ -102,8 +110,8 @@ test-xml: fmt lint | $(BASE) $(GO2XUNIT) ; $(info  running $(NAME:%=% )tests...)
 	$(GO2XUNIT) -fail -input test/tests.output -output test/tests.xml
 
 .PHONY: test-coverage test-coverage-tools
-test-coverage-tools: | $(GOCOVMERGE) $(GOCOV) $(GOCOVXML)
-test-coverage: COVERAGE_DIR := $(CURDIR)/test/coverage.$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+test-coverage-tools: | $(GOCOVMERGE) $(GOCOV) $(GOCOVXML) $(GCOV2LCOV)
+test-coverage: COVERAGE_DIR := $(CURDIR)/test/coverage
 test-coverage: fmt lint test-coverage-tools | $(BASE) ; $(info  Running coverage tests...) @ ## Run coverage tests
 	$Q mkdir -p $(COVERAGE_DIR)/coverage
 	$Q cd $(BASE) && for pkg in $(TESTPKGS); do \
@@ -117,6 +125,7 @@ test-coverage: fmt lint test-coverage-tools | $(BASE) ; $(info  Running coverage
 	$Q $(GOCOVMERGE) $(COVERAGE_DIR)/coverage/*.cover > $(COVERAGE_PROFILE)
 	$Q go tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
 	$Q $(GOCOV) convert $(COVERAGE_PROFILE) | $(GOCOVXML) > $(COVERAGE_XML)
+	$Q $(GCOV2LCOV) -infile $(COVERAGE_PROFILE) -outfile $(COVERAGE_DIR)/lcov.info
 
 .PHONY: lint
 lint: | $(BASE) $(GOLINT) ; $(info  Running golint...) @ ## Run golint on all source files
@@ -145,6 +154,12 @@ clean: ; $(info  Cleaning...) @ ## Cleanup everything
 	@rm -rf $(BUILDDIR)
 	@rm -rf $(GOBIN)
 	@rm -rf test/
+
+.PHONY: mockery
+mockery: | $(BASE) $(GOMOCKERY) ; $(info  Running mockery...) @ ## Run golint on all source files
+#	$Q cd $(BASE)/pkg/types && rm -rf mocks && $(GOMOCKERY) --all 2>/dev/null
+	$Q $(GOMOCKERY) --name=".*" --dir=pkg/types --output=pkg/types/mocks --recursive=false --log-level=debug
+	$Q $(GOMOCKERY) --name=".*" --dir=pkg/utils --output=pkg/utils/mocks --recursive=false --log-level=debug
 
 .PHONY: help
 help: ; @ ## Display this help message
