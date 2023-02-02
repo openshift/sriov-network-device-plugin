@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.18-openshift-4.12 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.19-openshift-4.13 AS builder
 
 COPY . /usr/src/sriov-network-device-plugin
 
@@ -9,7 +9,7 @@ ENV HTTPS_PROXY $https_proxy
 RUN make clean && \
     make build
 
-FROM registry.ci.openshift.org/ocp/4.12:base
+FROM registry.ci.openshift.org/ocp/4.13:base
 ENV INSTALL_PKGS "hwdata"
 RUN yum install -y $INSTALL_PKGS && \
     rpm -V $INSTALL_PKGS && \
