@@ -16,19 +16,12 @@ package accelerator
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/golang/glog"
 	"github.com/jaypipes/ghw"
 
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types"
-)
-
-const (
-	classIDBaseInt = 16
-	classIDBitSize = 64
-	maxVendorName  = 20
-	maxProductName = 40
+	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/utils"
 )
 
 type accelDeviceProvider struct {
@@ -48,37 +41,29 @@ func (ap *accelDeviceProvider) GetDiscoveredDevices() []*ghw.PCIDevice {
 	return ap.deviceList
 }
 
-func (ap *accelDeviceProvider) GetDevices(rc *types.ResourceConfig) []types.PciDevice {
-	newPciDevices := make([]types.PciDevice, 0)
+func (ap *accelDeviceProvider) GetDevices(rc *types.ResourceConfig) []types.HostDevice {
+	newHostDevices := make([]types.HostDevice, 0)
 	for _, device := range ap.deviceList {
 		if newDevice, err := NewAccelDevice(device, ap.rFactory, rc); err == nil {
-			newPciDevices = append(newPciDevices, newDevice)
+			newHostDevices = append(newHostDevices, newDevice)
 		} else {
 			glog.Errorf("accelerator GetDevices() error creating new device: %q", err)
 		}
 	}
-	return newPciDevices
+	return newHostDevices
 }
 
 func (ap *accelDeviceProvider) AddTargetDevices(devices []*ghw.PCIDevice, deviceCode int) error {
 	for _, device := range devices {
-		devClass, err := strconv.ParseInt(device.Class.ID, classIDBaseInt, classIDBitSize)
+		devClass, err := utils.ParseDeviceID(device.Class.ID)
 		if err != nil {
 			glog.Warningf("accelerator AddTargetDevices(): unable to parse device class for device %+v %q", device, err)
 			continue
 		}
 
 		if devClass == int64(deviceCode) {
-			vendor := device.Vendor
-			vendorName := vendor.Name
-			if len(vendor.Name) > maxVendorName {
-				vendorName = string([]byte(vendorName)[0:17]) + "..."
-			}
-			product := device.Product
-			productName := product.Name
-			if len(product.Name) > maxProductName {
-				productName = string([]byte(productName)[0:37]) + "..."
-			}
+			vendorName := utils.NormalizeVendorName(device.Vendor.Name)
+			productName := utils.NormalizeProductName(device.Product.Name)
 			glog.Infof("accelerator AddTargetDevices(): device found: %-12s\t%-12s\t%-20s\t%-40s", device.Address,
 				device.Class.ID, vendorName, productName)
 
@@ -88,7 +73,7 @@ func (ap *accelDeviceProvider) AddTargetDevices(devices []*ghw.PCIDevice, device
 	return nil
 }
 
-func (ap *accelDeviceProvider) GetFilteredDevices(devices []types.PciDevice, rc *types.ResourceConfig) ([]types.PciDevice, error) {
+func (ap *accelDeviceProvider) GetFilteredDevices(devices []types.HostDevice, rc *types.ResourceConfig) ([]types.HostDevice, error) {
 	filteredDevice := devices
 	af, ok := rc.SelectorObj.(*types.AccelDeviceSelectors)
 	if !ok {
@@ -124,11 +109,7 @@ func (ap *accelDeviceProvider) GetFilteredDevices(devices []types.PciDevice, rc 
 		}
 	}
 
-	// convert to []AccelDevice to []PciDevice
-	newDeviceList := make([]types.PciDevice, len(filteredDevice))
-	copy(newDeviceList, filteredDevice)
-
-	return newDeviceList, nil
+	return filteredDevice, nil
 }
 
 func (ap *accelDeviceProvider) ValidConfig(rc *types.ResourceConfig) bool {

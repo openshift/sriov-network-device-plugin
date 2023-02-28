@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 
 	"github.com/jaypipes/ghw"
+	"github.com/k8snetworkplumbingwg/govdpa/pkg/kvdpa"
 	nettypes "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
@@ -45,6 +46,8 @@ const (
 	NetDeviceType DeviceType = "netDevice"
 	// AcceleratorType is DeviceType for accelerator class devices
 	AcceleratorType DeviceType = "accelerator"
+	// AuxNetDeviceType is DeviceType for auxiliary network devices
+	AuxNetDeviceType DeviceType = "auxNetDevice"
 
 	// VdpaVirtioType is VdpaType for virtio-net devices
 	VdpaVirtioType VdpaType = "virtio"
@@ -77,37 +80,59 @@ Processing accelerators subclasses. ref: https://pci-ids.ucw.cz/read/PD/12
 01	AI Inference Accelerator
 */
 var SupportedDevices = map[DeviceType]int{
-	NetDeviceType:   0x02,
-	AcceleratorType: 0x12,
+	NetDeviceType:    0x02,
+	AcceleratorType:  0x12,
+	AuxNetDeviceType: 0x02,
+}
+
+// SupportedVdpaTypes is a map of 'vdpa device type as string' to 'vdpa device driver as string'
+var SupportedVdpaTypes = map[VdpaType]string{
+	VdpaVirtioType: kvdpa.VirtioVdpaDriver,
+	VdpaVhostType:  kvdpa.VhostVdpaDriver,
 }
 
 // ResourceConfig contains configuration parameters for a resource pool
 type ResourceConfig struct {
 	// optional resource prefix that will overwrite	global prefix specified in cli params
-	ResourcePrefix  string           `json:"resourcePrefix,omitempty"`
-	ResourceName    string           `json:"resourceName"` // the resource name will be added with resource prefix in K8s api
-	DeviceType      DeviceType       `json:"deviceType,omitempty"`
-	ExcludeTopology bool             `json:"excludeTopology,omitempty"`
-	Selectors       *json.RawMessage `json:"selectors,omitempty"`
+	ResourcePrefix string `json:"resourcePrefix,omitempty"`
+	//nolint:lll
+	ResourceName    string                    `json:"resourceName"` // the resource name will be added with resource prefix in K8s api
+	DeviceType      DeviceType                `json:"deviceType,omitempty"`
+	ExcludeTopology bool                      `json:"excludeTopology,omitempty"`
+	Selectors       *json.RawMessage          `json:"selectors,omitempty"`
+	AdditionalInfo  map[string]AdditionalInfo `json:"additionalInfo,omitempty"`
 	SelectorObj     interface{}
 }
 
 // DeviceSelectors contains common device selectors fields
 type DeviceSelectors struct {
-	Vendors      []string `json:"vendors,omitempty"`
-	Devices      []string `json:"devices,omitempty"`
-	Drivers      []string `json:"drivers,omitempty"`
+	Vendors []string `json:"vendors,omitempty"`
+	Devices []string `json:"devices,omitempty"`
+	Drivers []string `json:"drivers,omitempty"`
+}
+
+// AdditionalInfo contains all the per device or global extra information as key value pairs
+type AdditionalInfo map[string]string
+
+// GenericPciDeviceSelectors contains common PCI device selectors fields
+type GenericPciDeviceSelectors struct {
 	PciAddresses []string `json:"pciAddresses,omitempty"`
+}
+
+// GenericNetDeviceSelectors contains common net device selectors fields
+type GenericNetDeviceSelectors struct {
+	PfNames     []string `json:"pfNames,omitempty"`
+	RootDevices []string `json:"rootDevices,omitempty"`
+	LinkTypes   []string `json:"linkTypes,omitempty"`
+	IsRdma      bool     // the resource support rdma
 }
 
 // NetDeviceSelectors contains network device related selectors fields
 type NetDeviceSelectors struct {
 	DeviceSelectors
-	PfNames      []string `json:"pfNames,omitempty"`
-	RootDevices  []string `json:"rootDevices,omitempty"`
-	LinkTypes    []string `json:"linkTypes,omitempty"`
+	GenericPciDeviceSelectors
+	GenericNetDeviceSelectors
 	DDPProfiles  []string `json:"ddpProfiles,omitempty"`
-	IsRdma       bool     // the resource support rdma
 	NeedVhostNet bool     // share vhost-net along the selected resource
 	VdpaType     VdpaType `json:"vdpaType,omitempty"`
 }
@@ -115,6 +140,14 @@ type NetDeviceSelectors struct {
 // AccelDeviceSelectors contains accelerator(FPGA etc.) related selectors fields
 type AccelDeviceSelectors struct {
 	DeviceSelectors
+	GenericPciDeviceSelectors
+}
+
+// AuxNetDeviceSelectors contains auxiliary device related selector fields
+type AuxNetDeviceSelectors struct {
+	DeviceSelectors
+	GenericNetDeviceSelectors
+	AuxTypes []string `json:"auxTypes,omitempty"`
 }
 
 // ResourceConfList is list of ResourceConfig
@@ -138,10 +171,10 @@ type ResourceServer interface {
 // ResourceFactory is an interface to get instances of ResourcePool and ResourceServer
 type ResourceFactory interface {
 	GetResourceServer(ResourcePool) (ResourceServer, error)
-	GetDefaultInfoProvider(string, string) DeviceInfoProvider
+	GetDefaultInfoProvider(string, string) []DeviceInfoProvider
 	GetSelector(string, []string) (DeviceSelector, error)
-	GetResourcePool(rc *ResourceConfig, deviceList []PciDevice) (ResourcePool, error)
-	GetRdmaSpec(string) RdmaSpec
+	GetResourcePool(rc *ResourceConfig, deviceList []HostDevice) (ResourcePool, error)
+	GetRdmaSpec(DeviceType, string) RdmaSpec
 	GetVdpaDevice(string) VdpaDevice
 	GetDeviceProvider(DeviceType) DeviceProvider
 	GetDeviceFilter(*ResourceConfig) (interface{}, error)
@@ -156,7 +189,7 @@ type ResourcePool interface {
 	GetDevices() map[string]*pluginapi.Device // for ListAndWatch
 	Probe() bool
 	GetDeviceSpecs(deviceIDs []string) []*pluginapi.DeviceSpec
-	GetEnvs(deviceIDs []string) []string
+	GetEnvs(prefix string, deviceIDs []string) (map[string]string, error)
 	GetMounts(deviceIDs []string) []*pluginapi.Mount
 	StoreDeviceInfoFile(resourceNamePrefix string) error
 	CleanDeviceInfoFile(resourceNamePrefix string) error
@@ -168,56 +201,105 @@ type DeviceProvider interface {
 	AddTargetDevices([]*ghw.PCIDevice, int) error
 	GetDiscoveredDevices() []*ghw.PCIDevice
 
-	// GetDevices runs through the Discovered Devices and returns a list of fully populated PciDevices according to the given ResourceConfig
-	GetDevices(*ResourceConfig) []PciDevice
+	// GetDevices runs through the Discovered Devices and returns a list of fully populated HostDevices according to the given ResourceConfig
+	GetDevices(*ResourceConfig) []HostDevice
 
-	GetFilteredDevices([]PciDevice, *ResourceConfig) ([]PciDevice, error)
+	GetFilteredDevices([]HostDevice, *ResourceConfig) ([]HostDevice, error)
 
 	// ValidConfig performs validation of DeviceType-specific configuration
 	ValidConfig(*ResourceConfig) bool
 }
 
-// PciDevice provides an interface to get generic device specific information
-type PciDevice interface {
-	GetVendor() string
-	GetDriver() string
-	GetDeviceCode() string
-	GetPciAddr() string
-	GetPfPciAddr() string
+// APIDevice provides an interface to expose device information to Kubernetes API
+type APIDevice interface {
+	// GetDeviceSpecs returns a list of specs which describes host devices
 	GetDeviceSpecs() []*pluginapi.DeviceSpec
-	GetEnvVal() string
+	// GetEnvVal returns environment variable associated with device
+	GetEnvVal() map[string]AdditionalInfo
+	// GetMounts returns a list of host volumes associated with device
 	GetMounts() []*pluginapi.Mount
+	// GetAPIDevice returns k8s API device
 	GetAPIDevice() *pluginapi.Device
-	GetVFID() int
 }
 
-// PciNetDevice extends PciDevice interface
+// HostDevice provides an interface to get generic device information
+// represents generic device used by the plugin
+type HostDevice interface {
+	APIDevice
+	// GetVendor returns vendor identifier number of the device
+	GetVendor() string
+	// GetDriver returns driver name of the device
+	GetDriver() string
+	// GetDeviceID returns device unique identifier, for ex. PCI address
+	GetDeviceID() string
+	// GetDeviceCode returns identifier number of the device
+	GetDeviceCode() string
+}
+
+// PciDevice provides an interface to get generic PCI device information
+// represents generic functionality of all PCI devices
+// extends HostDevice interface
+type PciDevice interface {
+	HostDevice
+	// GetPciAddr returns PCI address of the device
+	GetPciAddr() string
+}
+
+// NetDevice provides an interface to get generic network device information
+// represents generic network device
+type NetDevice interface {
+	HostDevice
+	// GetPfNetName returns netdevice name of the parent PCI device
+	GetPfNetName() string
+	// GetPfPciAddr returns PCI address of the parent PCI device
+	GetPfPciAddr() string
+	// GetNetName returns netdevice name of the device
+	GetNetName() string
+	// GetLinkSpeed returns link speed of the devuce
+	GetLinkType() string
+	// GetLinkType returns link type of the devuce
+	GetLinkSpeed() string
+	// GetFuncID returns ID > -1 if device is a PCI Virtual Function or Scalable Function
+	GetFuncID() int
+	// IsRdma returns true if device is RDMA capable
+	IsRdma() bool
+}
+
+// PciNetDevice extends PciDevice and NetDevice interfaces
+// represents generic PCI network device
 type PciNetDevice interface {
 	PciDevice
-	GetPFName() string
-	GetNetName() string
-	GetLinkSpeed() string
-	GetLinkType() string
-	GetRdmaSpec() RdmaSpec
+	NetDevice
+	// GetDDPProfiles returns DDP profile if device is Intel Ethernet 700 Series NIC
 	GetDDPProfiles() string
+	// GetVdpaDevice returns VDPA device
 	GetVdpaDevice() VdpaDevice
 }
 
 // AccelDevice extends PciDevice interface
+// represents generic PCI accelerator device
 type AccelDevice interface {
 	PciDevice
 }
 
+// AuxNetDevice extends NetDevice interface
+type AuxNetDevice interface {
+	NetDevice
+	// GetAuxType returns type of auxiliary device
+	GetAuxType() string
+}
+
 // DeviceInfoProvider is an interface to get Device Plugin API specific device information
 type DeviceInfoProvider interface {
+	GetName() string
 	GetDeviceSpecs() []*pluginapi.DeviceSpec
-	GetEnvVal() string
+	GetEnvVal() AdditionalInfo
 	GetMounts() []*pluginapi.Mount
 }
 
 // DeviceSelector provides an interface for filtering a list of devices
 type DeviceSelector interface {
-	Filter([]PciDevice) []PciDevice
+	Filter([]HostDevice) []HostDevice
 }
 
 // LinkWatcher in interface to watch Network link status

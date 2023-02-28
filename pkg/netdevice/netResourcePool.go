@@ -28,20 +28,17 @@ import (
 
 type netResourcePool struct {
 	*resources.ResourcePoolImpl
-	selectors *types.NetDeviceSelectors
-	nadutils  types.NadUtils
+	nadutils types.NadUtils
 }
 
 var _ types.ResourcePool = &netResourcePool{}
 
 // NewNetResourcePool returns an instance of resourcePool
 func NewNetResourcePool(nadutils types.NadUtils, rc *types.ResourceConfig,
-	devicePool map[string]types.PciDevice) types.ResourcePool {
+	devicePool map[string]types.HostDevice) types.ResourcePool {
 	rp := resources.NewResourcePool(rc, devicePool)
-	s, _ := rc.SelectorObj.(*types.NetDeviceSelectors)
 	return &netResourcePool{
 		ResourcePoolImpl: rp,
-		selectors:        s,
 		nadutils:         nadutils,
 	}
 }
@@ -56,7 +53,7 @@ func (rp *netResourcePool) GetDeviceSpecs(deviceIDs []string) []*pluginapi.Devic
 	// Add device driver specific and rdma specific devices
 	for _, id := range deviceIDs {
 		if dev, ok := devicePool[id]; ok {
-			netDev := dev.(types.PciNetDevice) // convert generic PciDevice to PciNetDevice
+			netDev := dev.(types.PciNetDevice) // convert generic HostDevice to PciNetDevice
 			newSpecs := netDev.GetDeviceSpecs()
 			for _, ds := range newSpecs {
 				if !rp.DeviceSpecExist(devSpecs, ds) {
@@ -69,7 +66,7 @@ func (rp *netResourcePool) GetDeviceSpecs(deviceIDs []string) []*pluginapi.Devic
 }
 
 // StoreDeviceInfoFile stores the Device Info files according to the
-//  k8snetworkplumbingwg/device-info-spec
+// k8snetworkplumbingwg/device-info-spec
 func (rp *netResourcePool) StoreDeviceInfoFile(resourceNamePrefix string) error {
 	var devInfo nettypes.DeviceInfo
 	for id, dev := range rp.GetDevicePool() {

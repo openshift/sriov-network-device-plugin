@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/factory"
+	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/infoprovider"
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/resources"
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types"
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types/mocks"
@@ -51,13 +52,22 @@ var _ = Describe("Factory", func() {
 		func(name string, expected reflect.Type) {
 			f := factory.NewResourceFactory("fake", "fake", true)
 			p := f.GetDefaultInfoProvider("fakePCIAddr", name)
-			Expect(reflect.TypeOf(p)).To(Equal(expected))
+			Expect(len(p)).To(Equal(2)) // for all the providers expect netdevice we expect 2 info providers
+			Expect(reflect.TypeOf(p[1])).To(Equal(expected))
+
 		},
-		Entry("vfio-pci", "vfio-pci", reflect.TypeOf(resources.NewVfioInfoProvider("fakePCIAddr"))),
-		Entry("uio", "uio", reflect.TypeOf(resources.NewUioInfoProvider("fakePCIAddr"))),
-		Entry("igb_uio", "igb_uio", reflect.TypeOf(resources.NewUioInfoProvider("fakePCIAddr"))),
-		Entry("any other value", "netdevice", reflect.TypeOf(resources.NewGenericInfoProvider("fakePCIAddr"))),
+		Entry("vfio-pci", "vfio-pci", reflect.TypeOf(infoprovider.NewVfioInfoProvider("fakePCIAddr"))),
+		Entry("uio", "uio", reflect.TypeOf(infoprovider.NewUioInfoProvider("fakePCIAddr"))),
+		Entry("igb_uio", "igb_uio", reflect.TypeOf(infoprovider.NewUioInfoProvider("fakePCIAddr"))),
 	)
+
+	Describe("getting info provider for generic netdevice", func() {
+		f := factory.NewResourceFactory("fake", "fake", true)
+		p := f.GetDefaultInfoProvider("fakePCIAddr", "netdevice")
+		Expect(len(p)).To(Equal(1)) // for all the providers expect netdevice we expect 2 info providers
+		Expect(reflect.TypeOf(p[0])).To(Equal(reflect.TypeOf(infoprovider.NewGenericInfoProvider("fakePCIAddr"))))
+	})
+
 	DescribeTable("getting selector",
 		func(selector string, shouldSucceed bool, expected reflect.Type) {
 			f := factory.NewResourceFactory("fake", "fake", true)
@@ -95,12 +105,12 @@ var _ = Describe("Factory", func() {
 			var (
 				rp   types.ResourcePool
 				err  error
-				devs []types.PciDevice
+				devs []types.HostDevice
 			)
 			BeforeEach(func() {
 				f := factory.NewResourceFactory("fake", "fake", true)
 
-				devs = make([]types.PciDevice, 4)
+				devs = make([]types.HostDevice, 4)
 				vendors := []string{"8086", "8086", "8086", "1234"}
 				codes := []string{"1111", "1111", "1234", "4321"}
 				drivers := []string{"vfio-pci", "i40evf", "igb_uio", "igb_uio"}
@@ -115,7 +125,8 @@ var _ = Describe("Factory", func() {
 						On("GetDeviceCode").Return(codes[i]).
 						On("GetDriver").Return(drivers[i]).
 						On("GetPciAddr").Return(pciAddr[i]).
-						On("GetPFName").Return(pfNames[i]).
+						On("GetDeviceID").Return(pciAddr[i]).
+						On("GetPfNetName").Return(pfNames[i]).
 						On("GetPfPciAddr").Return(rootDevices[i]).
 						On("GetAPIDevice").Return(&pluginapi.Device{}).
 						On("GetLinkType").Return(linkTypes[i]).
@@ -167,11 +178,11 @@ var _ = Describe("Factory", func() {
 				rp   types.ResourcePool
 				rp2  types.ResourcePool
 				err  error
-				devs []types.PciDevice
+				devs []types.HostDevice
 			)
 			BeforeEach(func() {
 				f := factory.NewResourceFactory("fake", "fake", true)
-				devs = make([]types.PciDevice, 4)
+				devs = make([]types.HostDevice, 4)
 				vendors := []string{"8086", "8086", "8086", "8086"}
 				codes := []string{"1111", "1111", "1111", "1111"}
 				drivers := []string{"iavf", "iavf", "vfio-pci", "vfio-pci"}
@@ -186,11 +197,13 @@ var _ = Describe("Factory", func() {
 						On("GetDeviceCode").Return(codes[i]).
 						On("GetDriver").Return(drivers[i]).
 						On("GetPciAddr").Return(pciAddr[i]).
-						On("GetPFName").Return(pfNames[i]).
+						On("GetDeviceID").Return(pciAddr[i]).
+						On("GetPfNetName").Return(pfNames[i]).
 						On("GetPfPciAddr").Return(rootDevices[i]).
 						On("GetAPIDevice").Return(&pluginapi.Device{}).
 						On("GetLinkType").Return(linkTypes[i]).
-						On("GetDDPProfiles").Return(ddpProfiles[i])
+						On("GetDDPProfiles").Return(ddpProfiles[i]).
+						On("GetFuncID").Return(-1)
 					devs[i] = d
 				}
 
@@ -238,10 +251,10 @@ var _ = Describe("Factory", func() {
 				filteredDevices, err := dp.GetFilteredDevices(devs, c)
 				Expect(err).NotTo(HaveOccurred())
 
-				filteredDevicesTemp := []types.PciDevice{}
+				filteredDevicesTemp := []types.HostDevice{}
 				for _, dev := range filteredDevices {
-					if !deviceAllocated[dev.GetPciAddr()] {
-						deviceAllocated[dev.GetPciAddr()] = true
+					if !deviceAllocated[dev.GetDeviceID()] {
+						deviceAllocated[dev.GetDeviceID()] = true
 						filteredDevicesTemp = append(filteredDevicesTemp, dev)
 					}
 				}
@@ -263,10 +276,10 @@ var _ = Describe("Factory", func() {
 				filteredDevices, err = dp2.GetFilteredDevices(devs, c2)
 				Expect(err).NotTo(HaveOccurred())
 
-				filteredDevicesTemp = []types.PciDevice{}
+				filteredDevicesTemp = []types.HostDevice{}
 				for _, dev := range filteredDevices {
-					if !deviceAllocated[dev.GetPciAddr()] {
-						deviceAllocated[dev.GetPciAddr()] = true
+					if !deviceAllocated[dev.GetDeviceID()] {
+						deviceAllocated[dev.GetDeviceID()] = true
 						filteredDevicesTemp = append(filteredDevicesTemp, dev)
 					}
 				}
@@ -294,12 +307,12 @@ var _ = Describe("Factory", func() {
 			var (
 				rp   types.ResourcePool
 				err  error
-				devs []types.PciDevice
+				devs []types.HostDevice
 			)
 			BeforeEach(func() {
 				f := factory.NewResourceFactory("fake", "fake", true)
 
-				devs = make([]types.PciDevice, 1)
+				devs = make([]types.HostDevice, 1)
 				vendors := []string{"8086"}
 				codes := []string{"1024"}
 				drivers := []string{"uio_pci_generic"}
@@ -310,6 +323,7 @@ var _ = Describe("Factory", func() {
 						On("GetDeviceCode").Return(codes[i]).
 						On("GetDriver").Return(drivers[i]).
 						On("GetPciAddr").Return(pciAddr[i]).
+						On("GetDeviceID").Return(pciAddr[i]).
 						On("GetAPIDevice").Return(&pluginapi.Device{})
 					devs[i] = d
 				}
@@ -345,6 +359,76 @@ var _ = Describe("Factory", func() {
 			})
 		})
 	})
+	Describe("getting resource pool for auxnetdevice", func() {
+		Context("with all types of selectors used and matching devices found", func() {
+			utils.SetDefaultMockNetlinkProvider()
+			var (
+				rp   types.ResourcePool
+				err  error
+				devs []types.HostDevice
+			)
+			BeforeEach(func() {
+				f := factory.NewResourceFactory("fake", "fake", true)
+
+				devs = make([]types.HostDevice, 4)
+				vendors := []string{"8086", "8086", "15b3", "15b3"}
+				codes := []string{"1111", "1111", "2222", "2222"}
+				drivers := []string{"igb", "igb", "mlx5_core", "mlx5_core"}
+				deviceID := []string{"igb.eth.0", "igb.eth.1", "mlx5_core.eth.0", "mlx5_core.sf.1"}
+				pfNames := []string{"eno1", "ib0", "eth0", "eth0"}
+				rootDevices := []string{"0000:86:00.0", "0000:86:00.0", "0000:05:00.0", "0000:05:00.0"}
+				linkTypes := []string{"ether", "infiniband", "ether", "ether"}
+				auxTypes := []string{"eth", "eth", "eth", "sf"}
+				for i := range devs {
+					d := &mocks.AuxNetDevice{}
+					d.On("GetVendor").Return(vendors[i]).
+						On("GetDeviceCode").Return(codes[i]).
+						On("GetDriver").Return(drivers[i]).
+						On("GetDeviceID").Return(deviceID[i]).
+						On("GetPFName").Return(pfNames[i]).
+						On("GetPfPciAddr").Return(rootDevices[i]).
+						On("GetAPIDevice").Return(&pluginapi.Device{}).
+						On("GetLinkType").Return(linkTypes[i]).
+						On("GetFuncID").Return(-1).
+						On("GetAuxType").Return(auxTypes[i])
+					devs[i] = d
+				}
+
+				var selectors json.RawMessage
+				err = selectors.UnmarshalJSON([]byte(`
+					[
+						{
+							"vendors": ["15b3"],
+							"devices": ["2222"],
+							"drivers": ["mlx5_core"],
+							"pfNames": ["eth1"],
+							"rootDevices": ["0000:05:00.0"],
+							"linkTypes": ["ether"],
+							"auxTypes": ["eth", "sf"],
+						}
+					]`),
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+
+				c := types.ResourceConfig{
+					ResourceName: "fake",
+					Selectors:    &selectors,
+					DeviceType:   types.AuxNetDeviceType,
+				}
+
+				rp, err = f.GetResourcePool(&c, devs)
+			})
+			It("should return valid resource pool", func() {
+				Expect(rp).NotTo(BeNil())
+				Expect(rp.GetDevices()).To(HaveLen(4))
+				Expect(rp.GetDevices()).To(HaveKey("mlx5_core.sf.1"))
+			})
+			It("should not fail", func() {
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+	})
 	DescribeTable("getting device provider",
 		func(dt types.DeviceType, shouldSucceed bool) {
 			f := factory.NewResourceFactory("fake", "fake", true)
@@ -357,6 +441,7 @@ var _ = Describe("Factory", func() {
 		},
 		Entry("of a netdevice shouldn't return nil", types.NetDeviceType, true),
 		Entry("of an accelerator shouldn't return nil", types.AcceleratorType, true),
+		Entry("of an auxnetdevice shouldn't return nil", types.AuxNetDeviceType, true),
 		Entry("of unsupported device type should return nil", nil, false),
 	)
 	DescribeTable("getting device filter",
@@ -384,17 +469,28 @@ var _ = Describe("Factory", func() {
 		Entry("failed netdevice", types.NetDeviceType, `invalid selectors!`, nil, false),
 		Entry("successful accelerator", types.AcceleratorType, `{"Vendors": ["8086"]}`, nil, true),
 		Entry("failed accelerator", types.AcceleratorType, `invalid selectors!`, nil, false),
+		Entry("successful auxnetdevice", types.AuxNetDeviceType, `{"auxTypes": ["foo"]}`, nil, true),
+		Entry("failed auxnetdevice", types.AuxNetDeviceType, `invalid selectors!`, nil, false),
 		Entry("unsupported type", nil, ``, nil, false),
 	)
 	Describe("getting rdma spec", func() {
 		Context("check c rdma spec", func() {
 			f := factory.NewResourceFactory("fake", "fake", true)
-			rs := f.GetRdmaSpec("0000:00:00.1")
-			isRdma := rs.IsRdma()
-			deviceSpec := rs.GetRdmaDeviceSpec()
-			It("shoud return valid rdma spec", func() {
-				Expect(isRdma).ToNot(BeTrue())
-				Expect(deviceSpec).To(HaveLen(0))
+			rs1 := f.GetRdmaSpec(types.NetDeviceType, "0000:00:00.1")
+			rs2 := f.GetRdmaSpec(types.AcceleratorType, "0000:00:00.2")
+			rs3 := f.GetRdmaSpec(types.AuxNetDeviceType, "foo.bar.3")
+			It("shoud return valid rdma spec for netdevice", func() {
+				Expect(rs1).ToNot(BeNil())
+				Expect(rs1.IsRdma()).ToNot(BeTrue())
+				Expect(rs1.GetRdmaDeviceSpec()).To(HaveLen(0))
+			})
+			It("shoud return nil for accelerator", func() {
+				Expect(rs2).To(BeNil())
+			})
+			It("shoud return valid rdma spec for auxnetdevice", func() {
+				Expect(rs3).ToNot(BeNil())
+				Expect(rs3.IsRdma()).ToNot(BeTrue())
+				Expect(rs3.GetRdmaDeviceSpec()).To(HaveLen(0))
 			})
 		})
 	})

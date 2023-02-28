@@ -6,36 +6,48 @@
 
 ## Table of Contents
 
-- [SR-IOV Network Device Plugin](#sr-iov-network-device-plugin)
-- [Features](#features)
-  - [Supported SR-IOV NICs](#supported-sr-iov-nics)
-- [Quick Start](#quick-start)
-  - [Install SR-IOV CNI](#install-sr-iov-cni)
-  - [Get SR-IOV Network Device Plugin container image](#get-sr-iov-network-device-plugin-container-image)
-  - [Install SR-IOV Network Device Plugin](#install-sr-iov-network-device-plugin)
-  - [Install one compatible CNI meta plugin](#install-one-compatible-cni-meta-plugin)
-- [Configurations](#configurations)
-  - [Config parameters](#config-parameters)
-  - [Command line arguments](#command-line-arguments)
-  - [Assumptions](#assumptions)
-  - [Workflow](#workflow)
-- [Example deployments](#example-deployments)
+- [SR-IOV Network Device Plugin for Kubernetes](#sr-iov-network-device-plugin-for-kubernetes)
+  - [Table of Contents](#table-of-contents)
+  - [SR-IOV Network Device Plugin](#sr-iov-network-device-plugin)
+  - [Features](#features)
+    - [Supported SR-IOV NICs](#supported-sr-iov-nics)
+  - [Quick Start](#quick-start)
+    - [Creating SR-IOV Virtual Functions](#creating-sr-iov-virtual-functions)
+    - [Install SR-IOV CNI](#install-sr-iov-cni)
+    - [Get SR-IOV Network Device Plugin container image](#get-sr-iov-network-device-plugin-container-image)
+    - [Install SR-IOV Network Device Plugin](#install-sr-iov-network-device-plugin)
+    - [Install one compatible CNI meta plugin](#install-one-compatible-cni-meta-plugin)
+  - [Configurations](#configurations)
+    - [Config parameters](#config-parameters)
+    - [Command line arguments](#command-line-arguments)
+    - [Assumptions](#assumptions)
+    - [Workflow](#workflow)
+  - [Example deployments](#example-deployments)
     - [Deploy the Device Plugin](#deploy-the-device-plugin)
     - [Deploy SR-IOV workloads when Multus is used](#deploy-sr-iov-workloads-when-multus-is-used)
     - [Deploy SR-IOV workloads when DANM is used](#deploy-sr-iov-workloads-when-danm-is-used)
     - [Pod device information](#pod-device-information)
-- [Virtual Deployments Support](#virtual-deployments-support)
-- [Multi Architecture Support](#multi-architecture-support)
-- [Issues and Contributing](#issues-and-contributing)
+  - [Virtual Deployments Support](#virtual-deployments-support)
+    - [Configure Device Plugin extended selectors in virtual environments](#configure-device-plugin-extended-selectors-in-virtual-environments)
+  - [CNI plugins in virtual environments](#cni-plugins-in-virtual-environments)
+    - [Virtual environments with no iommu](#virtual-environments-with-no-iommu)
+  - [Multi Architecture Support](#multi-architecture-support)
+  - [Issues and Contributing](#issues-and-contributing)
 
 ## SR-IOV Network Device Plugin
 
 The SR-IOV Network Device Plugin is Kubernetes device plugin for discovering and advertising networking resources in the
-form of SR-IOV virtual functions (VFs) and PCI physical functions (PFs) available on a Kubernetes host.
+form of:
+- SR-IOV virtual functions (VFs)
+- PCI physical functions (PFs)
+- Auxiliary network devices, in particular Subfunctions (SFs)
+
+which are available on a Kubernetes host
 
 ## Features
 
 - Handles SR-IOV capable/not-capable devices (NICs and Accelerators alike)
+- Handles PCI backed Auxiliary network devices (**at the moment SFs only**)
 - Supports devices with both Kernel and userspace (UIO and VFIO) drivers
 - Allows resource grouping using "Selector"
 - User configurable resourceName
@@ -44,7 +56,7 @@ form of SR-IOV virtual functions (VFs) and PCI physical functions (PFs) availabl
 - Extensible to support new device types with minimal effort if not already supported
 - Works within virtual deployments of Kubernetes that do not have virtualized-iommu support (VFIO No-IOMMU support)
 
-To deploy workloads with SR-IOV VF or PCI PF, this plugin needs to work together with the following two CNI components:
+To deploy workloads with SR-IOV VF, Auxiliary network devices or PCI PF, this plugin needs to work together with the following two CNI components:
 
 - Any CNI meta plugin supporting Device Plugin based network provisioning (Multus CNI, or DANM)
 
@@ -58,83 +70,100 @@ To deploy workloads with SR-IOV VF or PCI PF, this plugin needs to work together
     - During Pod creation, plumbs the allocated network device to the Pods network namespace using device information given by the meta plugin
     - On Pod deletion, reset and release the allocated network device from the Pod
 
-
 Please follow the [Quick Start](#quick-start) for multi network interface support in Kubernetes.
 
 ### Supported SR-IOV NICs
 
 The following  NICs were tested with this implementation. However, other SR-IOV capable NICs should work as well.
- - Intel® E800 Series
- - Intel® X700 Series
- - Intel® 82599ES
- - Mellanox ConnectX-4®
- - Mellanox Connectx-4® Lx EN Adapter
- - Mellanox ConnectX-5®
- - Mellanox ConnectX-5® Ex
- - Mellanox ConnectX-6®
- - Mellanox ConnectX-6® Dx
+
+- Intel® Ethernet 800 Series (E810)
+- Intel® Ethernet 700 Series (XL710, X710, XXV710)
+- Intel® Ethernet 500 Series (82599, X520, X540, X550)
+- Mellanox ConnectX-4®
+- Mellanox Connectx-4® Lx EN Adapter
+- Mellanox ConnectX-5®
+- Mellanox ConnectX-5® Ex
+- Mellanox ConnectX-6®
+- Mellanox ConnectX-6® Dx
+- Mellanox BlueField-2®
 
 ## Quick Start
 
-### Creating SR-IOV Virtual Functions
+### Creating network functions
 
-Before starting the SR-IOV Network Device Plugin you will need to create SR-IOV Virtual Functions on your system. [The VF Setup doc will guide you through that process.](docs/vf-setup.md)
+Before starting the SR-IOV Network Device Plugin you will need to create desired network functions on your system. Docs below will guide you through that process.
+
+- [Creating SR-IOV Virtual Functions](docs/vf-setup.md)
+- [Creating Subfunctions](docs/subfunctions/README.md)
 
 ### Install SR-IOV CNI
 
 See the [SR-IOV CNI](https://github.com/k8snetworkplumbingwg/sriov-cni) repository for build and installation instructions. Supported from SR-IOV CNI release 2.0+.
 
 ### Get SR-IOV Network Device Plugin container image
+
 #### GitHub
-```
-$ docker pull ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin:latest
+
+```sh
+ docker pull ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin:latest
 ```
 
 #### Build image locally
+
+```sh
+ make image
 ```
-$ make image
-```
+
 > On a successful build, a docker image with tag `ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin:latest` will be created. You will need to build this image on each node. Alternatively, you could use a local docker registry to host this image.
 
 ### Install SR-IOV Network Device Plugin
+
 #### Deploy config map
+
 Create a ConfigMap that defines SR-IOV resource pool configuration
 
 > Make sure to update the 'config.json' entry in the configMap data to reflect your resource configuration for the device plugin. See [Configurations](#configurations) section for supported configuration parameters.
 
+```sh
+ kubectl create -f deployments/configMap.yaml
 ```
-$ kubectl create -f deployments/configMap.yaml
-```
-#### Deploy daemonset
-```
-$ kubectl create -f deployments/k8s-v1.16/sriovdp-daemonset.yaml
-```
-> For K8s version v1.15 or earlier use `deployments/k8s-v1.10-v1.15/sriovdp-daemonset.yaml` instead.
 
+#### Deploy daemonset
+
+```sh
+ kubectl create -f deployments/sriovdp-daemonset.yaml
+```
 
 ### Install one compatible CNI meta plugin
+
 A compatible CNI meta-plugin installation is required for SR-IOV CNI plugin to be able to get allocated VF's deviceID in order to configure it.
 
 #### Option 1 - Multus
 
 ##### Install Multus
+
 Please refer to Multus [Quickstart Installation Guide](https://github.com/k8snetworkplumbingwg/multus-cni#quickstart-installation-guide) to install Multus.
 
 ##### Network Object CRDs
 
-Multus uses Custom Resource Definitions(CRDs) for defining additional network attachements. These network attachment CRDs follow the standards defined by K8s Network Plumbing Working Group(NPWG). Please refer to [Multus documentation](https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/README.md) for more information.
+Multus uses Custom Resource Definitions(CRDs) for defining additional network attachements. These network attachment CRDs follow the standards defined by K8s Network Plumbing Working Group (NPWG). Please refer to [Multus documentation](https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/README.md) for more information.
+
 1. Create the SR-IOV Network CRD
-```
-$ kubectl create -f deployments/sriov-crd.yaml
+
+```sh
+ kubectl create -f deployments/sriov-crd.yaml
 ```
 
 #### Option 2 - DANM
+
 This section explains an example deployment of SR-IOV Network Device Plugin in Kubernetes if you choose DANM as your meta plugin.
 
 ##### Install DANM
+
 Refer to [DANM deployment documentation](https://github.com/nokia/danm/blob/master/deployment-guide.md) for detailed instructions.
 
 ##### Create SR-IOV type networks
+
 DANM supports the Device Plugin based SR-IOV provisioning with the dynamic level.
 Refer to the [DAMN User Guide documentation](https://github.com/nokia/danm/blob/master/user-guide.md) for detailed instructions.
 For example manifest objects refer to [SR-IOV demo](https://github.com/nokia/danm/tree/master/example/device_plugin_demo)
@@ -201,59 +230,150 @@ This plugin creates device plugin endpoints based on the configurations given in
                     "vendors": ["8086"],
                     "devices": ["0d90"]
             }
+        },
+        {
+            "resourceName": "bf2_sf",
+            "resourcePrefix": "nvidia.com",
+            "deviceType": "auxNetDevice",
+            "selectors": {
+                "vendors": ["15b3"],
+                "devices": ["a2d6"],
+                "pfNames": ["p0#1-5"],
+                "auxTypes": ["sf"]
+            }
+        },
+        {
+          "resourceName": "intel_sriov_netdevice_additional_env",
+          "selectors": {
+            "vendors": ["8086"],
+            "devices": ["154c", "10ed", "1889"],
+            "drivers": ["i40evf", "ixgbevf", "iavf"]
+          },
+          "additionalInfo": {
+             "*": {
+               "token": "3e49019f-412f-4f02-824e-4cd195944205"
+             }
+          }
         }
-
     ]
 }
 ```
 
 `"resourceList"` should contain a list of config objects. Each config object may consist of following fields:
 
-
-|      Field       | Required |                                                    Description                                                    |                     Type/Defaults                     |                     Example/Accepted values                     |
-|------------------|----------|-------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|-----------------------------------------------------------------|
-| "resourceName"   | Y        | Endpoint resource name. Should not contain special characters including hyphens and must be unique in the scope of the resource prefix | string                                                | "sriov_net_A"                                                   |
-| "resourcePrefix" | N        | Endpoint resource prefix name override. Should not contain special characters                                     | string Default : "intel.com"                          | "yourcompany.com"                                               |
-| "deviceType"     | N        | Device Type for a resource pool.                                                                                  | string value of supported types. Default: "netDevice" | Currently supported values: "accelerator", "netDevice"          |
-| "excludeTopology" | N       | Exclude advertising of device's NUMA topology          | bool Default: "false"    | "excludeTopology": true          |
-| "selectors"      | N        | A map of device selectors. The "deviceType" value determines the "selectors" options.                             | json object as string Default: null                   | Example: "selectors": {"vendors": ["8086"],"devices": ["154c"]} |
-
-
+|       Field       | Required |                                                              Description                                                               |                     Type/Defaults                     |                         Example/Accepted values                        |
+|-------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|------------------------------------------------------------------------|
+| "resourceName"    | Y        | Endpoint resource name. Should not contain special characters including hyphens and must be unique in the scope of the resource prefix | string                                                | "sriov_net_A"                                                          |
+| "resourcePrefix"  | N        | Endpoint resource prefix name override. Should not contain special characters                                                          | string Default : "intel.com"                          | "yourcompany.com"                                                      |
+| "deviceType"      | N        | Device Type for a resource pool.                                                                                                       | string value of supported types. Default: "netDevice" | Currently supported values: "accelerator", "netDevice", "auxNetDevice" |
+| "excludeTopology" | N        | Exclude advertising of device's NUMA topology                                                                                          | bool Default: "false"                                 | "excludeTopology": true                                                |
+| "selectors"       | N        | A map of device selectors. The "deviceType" value determines the "selectors" options.                                                  | json object as string Default: null                   | Example: "selectors": {"vendors": ["8086"],"devices": ["154c"]}        |
+| "additionalInfo" | N | A map of map to add additional information to the pod via environment variables to devices                                             | json object as string Default: null  | Example: "additionalInfo": {"*": {"token": "3e49019f-412f-4f02-824e-4cd195944205"}} |
 
 Note: "resourceName" must be unique only in the scope of a given prefix, including the one specified globally in the CLI params, e.g. "example.com/10G", "acme.com/10G" and "acme.com/40G" are perfectly valid names.
 
 #### Device selectors
+
 The "deviceType" value determines which selectors are supported for that device. Each selector evaluated in order as listed in selector tables below.
 
-#### Common selectors
-All device types support following common device selectors.
+#### Accelerator devices selectors
+This selectors are applicable when "deviceType" is "accelerator".
 
-|   Field        | Required |                Description                |         Type/Defaults          |   Example/Accepted values        |
-|----------------|----------|-------------------------------------------|--------------------------------|----------------------------------|
-| "vendors"      | N        | Target device's vendor Hex code as string | `string` list Default: `null`  | "vendors": ["8086", "15b3"]      |
-| "devices"      | N        | Target Devices' device Hex code as string | `string` list Default: `null`  | "devices": ["154c", "1889", "1018"] |
-| "drivers"      | N        | Target device driver names as string      | `string` list Default: `null`  | "drivers": ["vfio-pci"]          |
-| "pciAddresses" | N        | Target device's pci address as string     | `string` list Default: `null`  | "pciAddresses": ["0000:03:02.0"] |
+|     Field      | Required |                Description                |         Type/Defaults         |       Example/Accepted values       |
+|----------------|----------|-------------------------------------------|-------------------------------|-------------------------------------|
+| "vendors"      | N        | Target device's vendor Hex code as string | `string` list Default: `null` | "vendors": ["8086", "15b3"]         |
+| "devices"      | N        | Target Devices' device Hex code as string | `string` list Default: `null` | "devices": ["154c", "1889", "1018"] |
+| "drivers"      | N        | Target device driver names as string      | `string` list Default: `null` | "drivers": ["vfio-pci"]             |
+| "pciAddresses" | N        | Target device's pci address as string     | `string` list Default: `null` | "pciAddresses": ["0000:03:02.0"]    |
 
 
-#### Extended selectors for device type "netDevice"
-This selector is applicable when "deviceType" is "netDevice"(note: this is default). In addition to the common selectors from above table, the "netDevice" also supports following selectors.
+#### Network devices selector
+This selector is applicable when "deviceType" is "netDevice"(note: this is default)
 
-|     Field     | Required |                          Description                           |                   Type/Defaults                   |                               Example/Accepted values                                |
-|---------------|----------|----------------------------------------------------------------|---------------------------------------------------|--------------------------------------------------------------------------------------|
-| "pfNames"     | N        | VFs from PF matches list of PF names                           | `string` list Default: `null`                     | "pfNames": ["enp2s2f0"] (See follow-up sections for some advance usage of "pfNames")             |
-| "rootDevices"     | N        | VFs from PF matches list of PF PCI addresses               | `string` list Default: `null`                     | "rootDevices": ["0000:86:00.0"] (See follow-up sections for some advance usage of "rootDevices") |
-| "linkTypes"   | N        | The link type of the net device associated with the PCI device | `string` list Default: `null`                     | "linkTypes": ["ether"]                                                                           |
-| "ddpProfiles" | N        | A map of device selectors                                      | `string` list Default: `null`                     | "ddpProfiles": ["GTPv1-C/U IPv4/IPv6 payload"]                                                   |
-| "isRdma"      | N        | Mount RDMA resources. Incompatible with vdpaType               | `bool`  values `true` or `false` Default: `false` | "isRdma": `true`                                                                                 |
-| "needVhostNet"| N        | Share /dev/vhost-net and /dev/net/tun                          | `bool`  values `true` or `false` Default: `false` | "needVhostNet": `true`                                                                           |
-| "vdpaType"    | N        | The type of vDPA device (virtio, vhost). Incompatible with isRdma = true    | `string` values `vhost` or `virtio` Default: `null` | "vdpaType": "vhost"                                                                           |
 
+|     Field      | Required |                               Description                                |                    Type/Defaults                    |                                     Example/Accepted values                                      |
+|----------------|----------|--------------------------------------------------------------------------|-----------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| "vendors"      | N        | Target device's vendor Hex code as string                                | `string` list Default: `null`                       | "vendors": ["8086", "15b3"]                                                                      |
+| "devices"      | N        | Target Devices' device Hex code as string                                | `string` list Default: `null`                       | "devices": ["154c", "1889", "1018"]                                                              |
+| "drivers"      | N        | Target device driver names as string                                     | `string` list Default: `null`                       | "drivers": ["vfio-pci"]                                                                          |
+| "pciAddresses" | N        | Target device's pci address as string                                    | `string` list Default: `null`                       | "pciAddresses": ["0000:03:02.0"]                                                                 |
+| "pfNames"      | N        | functions from PF matches list of PF names                               | `string` list Default: `null`                       | "pfNames": ["enp2s2f0"] (See follow-up sections for some advance usage of "pfNames")             |
+| "rootDevices"  | N        | functions from PF matches list of PF PCI addresses                       | `string` list Default: `null`                       | "rootDevices": ["0000:86:00.0"] (See follow-up sections for some advance usage of "rootDevices") |
+| "linkTypes"    | N        | The link type of the net device associated with the PCI device           | `string` list Default: `null`                       | "linkTypes": ["ether"]                                                                           |
+| "isRdma"       | N        | Mount RDMA resources. Incompatible with vdpaType                         | `bool` values `true` or `false` Default: `false`    | "isRdma": `true`                                                                                 |
+| "ddpProfiles"  | N        | A map of device selectors                                                | `string` list Default: `null`                       | "ddpProfiles": ["GTPv1-C/U IPv4/IPv6 payload"]                                                   |
+| "needVhostNet" | N        | Share /dev/vhost-net and /dev/net/tun                                    | `bool` values `true` or `false` Default: `false`    | "needVhostNet": `true`                                                                           |
+| "vdpaType"     | N        | The type of vDPA device (virtio, vhost). Incompatible with isRdma = true | `string` values `vhost` or `virtio` Default: `null` | "vdpaType": "vhost"                                                                              |
+
+
+#### Auxiliary network devices selectors
+This selector is applicable when "deviceType" is "auxNetDevice".
+
+|     Field     | Required |                                                              Description                                                               |                  Type/Defaults                   |                                     Example/Accepted values                                      |
+|---------------|----------|----------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| "vendors"     | N        | Target device's vendor Hex code as string                                                                                              | `string` list Default: `null`                    | "vendors": ["8086", "15b3"]                                                                      |
+| "devices"     | N        | Parent PCI device Hex code as string                                                                                                   | `string` list Default: `null`                    | "devices": ["154c", "1889", "1018"]                                                              |
+| "drivers"     | N        | Target device driver names as string                                                                                                   | `string` list Default: `null`                    | "drivers": ["vfio-pci"]                                                                          |
+| "pfNames"     | N        | functions from PF matches list of PF names                                                                                             | `string` list Default: `null`                    | "pfNames": ["enp2s2f0"] (See follow-up sections for some advance usage of "pfNames")             |
+| "rootDevices" | N        | functions from PF matches list of PF PCI addresses                                                                                     | `string` list Default: `null`                    | "rootDevices": ["0000:86:00.0"] (See follow-up sections for some advance usage of "rootDevices") |
+| "linkTypes"   | N        | The link type of the net device associated with the PCI device                                                                         | `string` list Default: `null`                    | "linkTypes": ["ether"]                                                                           |
+| "isRdma"      | N        | Mount RDMA resources. Incompatible with vdpaType                                                                                       | `bool` values `true` or `false` Default: `false` | "isRdma": `true`                                                                                 |
+| "auxTypes"    | N        | List of vendor specific auxiliary network device types. Device type can be determined by its name: <driver_name>.<kind_of_a_type>.<id> | `string` list Default: `null`                    | "auxTypes": ["sf", "eth"]                                                                        |
 
 [//]: # (The tables above generated using: https://ozh.github.io/ascii-tables/)
 
-#### Extended selectors for device type "accelerator"
-This selector is applicable when "deviceType" is "accelerator". The "accelerator" device type currently supports only the common selectors.
+#### AdditionalInfo field
+
+This field defines a method to add information as part of the environment variable the sriov-network-device-plugin injects to the container.
+
+Examples:
+```
+"additionalInfo": {
+   "*": {
+     "token": "3e49019f-412f-4f02-824e-4cd195944205"
+   }
+}     
+```
+The '*' is a special key telling the device plugin to inject this info to all the devices matching the selector.
+you can also specify a specific pci address if you want to override or add more information to a specific device
+
+```
+"additionalInfo": {
+   "*": {
+     "token": "3e49019f-412f-4f02-824e-4cd195944205"
+   },
+    "0000:86:00.0": {
+    "additional-token": "6e7dc135-7a1c-456f-a008-c2cfb37997be"
+    }
+
+}   
+
+output for pod allocating a different deviceID:
+{"0000:3b:02.6":{"extraInfo":{"token":"3e49019f-412f-4f02-824e-4cd195944205"}
+
+output for pod allocating the specific deviceID:
+{"0000:86:00.0":{"extraInfo":{"token":"3e49019f-412f-4f02-824e-4cd195944205","additional-token": "6e7dc135-7a1c-456f-a008-c2cfb37997be"}
+```
+
+When having the same key for both the "*" and spefic deviceID variable the specific one will be taken
+
+```
+"additionalInfo": {
+   "*": {
+     "token": "original"
+   },
+    "0000:86:00.0": {
+    "token": "specific"
+    }
+
+}   
+
+output for pod allocating a different deviceID:
+{"0000:3b:02.6":{"extraInfo":{"token":"original"}
+
+output for pod allocating the specific deviceID:
+{"0000:86:00.0":{"extraInfo":{"token":"specific"}
+```
 
 ### Command line arguments
 
@@ -285,59 +405,63 @@ Usage of ./sriovdp:
 
 ### Assumptions
 
-This plugin does not bind or unbind any driver to any device whether it's PFs or VFs. It also doesn't create Virtual functions either. Usually, the virtual functions are created at boot time when kernel module for the device is loaded. Required device drivers could be loaded on system boot-up time by allow-listing/deny-listing the right modules. But plugin needs to be aware of the driver type of the resources (i.e. devices) that it is registering as K8s extended resource so that it's able to create appropriate Device Specs for the requested resource.
+This plugin does not bind or unbind any driver to any device whether it's PFs or VFs. It also doesn't create Virtual functions either. Usually, the virtual functions are created at boot time when kernel module for the device is loaded. Same with a SFs. Required device drivers could be loaded on system boot-up time by allow-listing/deny-listing the right modules. But plugin needs to be aware of the driver type of the resources (i.e. devices) that it is registering as K8s extended resource so that it's able to create appropriate Device Specs for the requested resource.
 
 For example, if the driver type is uio (i.e. igb_uio.ko) then there are specific device files to add in Device Spec. For vfio-pci, device files are different. And if it is Linux kernel network driver then there is no device file to be added.
 
 The idea here is, user creates a resource config for each resource pool as shown in [Config parameters](#config-parameters) by specifying the resource name, a list resource "selectors".
 
-The device plugin will initially discover all PCI network resources in the host and populate an initial "device list". Each "resource pool" then applies its selectors on this list and add devices that satisfies the selector's constraints. Each selector narrows down the list of devices for the resource pool. Currently, the selectors are applied in following order:
+The device plugin will initially discover all PCI network resources in the host and populate an initial "device list". If device type is Auxiliary network device (auxNetDevice), then for each discovered PCI device of type Netdevice plugin discovers auxiliry devices. Each "resource pool" then applies its selectors on this list and add devices that satisfies the selector's constraints. Each selector narrows down the list of devices for the resource pool. Currently, the selectors are applied in following order:
 
 1. "vendors"      - The vendor hex code of device
 2. "devices"      - The device hex code of device
 3. "drivers"      - The driver name the device is registered with
-4. "pciAddresses" - The pci address of the device in BDF notation
-4. "pfNames"      - The Physical function name
-5. "rootDevices"  - The Physical function PCI address
-6. "linkTypes"    - The link type of the net device associated with the PCI device.
+4. "pciAddresses" - The pci address of the device in BDF notation (if device type is accelerator or netDevice)
+5. "auxTypes"     - The type of auxiliary network device (if device type is auxNetDevice).
+6. "pfNames"      - The Physical function name
+7. "rootDevices"  - The Physical function PCI address
+8. "linkTypes"    - The link type of the net device associated with the PCI device
 
-The "pfNames" and "rootDevices" selectors can be used to specify a list and/or range of VFs for a pool in the below format:
+The "pfNames" and "rootDevices" selectors can be used to specify a list and/or range of VFs/SFs for a pool in the below format
 ````
-"<PFName>#<SingleVF>,<FirstVF>-<LastVF>,<SingleVF>,<SingleVF>,<FirstVF>-<LastVF>"
+"<PFName>#<SingleFunc>,<FirstFunc>-<LastFunc>,<SingleFunc>,<SingleFunc>,<FirstFunc>-<LastFunc>"
 ````
 
 Or
 
-````
-"<RootDevice>#<SingleVF>,<FirstVF>-<LastVF>,<SingleVF>,<SingleVF>,<FirstVF>-<LastVF>"
+````json
+"<RootDevice>#<SingleFunc>,<FirstFunc>-<LastFunc>,<SingleFunc>,<SingleFunc>,<FirstFunc>-<LastFunc>"
 ````
 
 Where:
 
     `<PFName>`     - is the PF interface name
     `<RootDevice>` - is the PF PCI address
-    `<SingleVF>`   - is a single VF index (0-based) that is included into the pool
-    `<FirstVF>`    - is the first VF index (0-based) that is included into the range
-    `<LastVF>`     - is the last VF index (0-based) that is included into the range
+    `<SingleFunc>` - is a single function index (0-based) that is included into the pool
+    `<FirstFunc>`  - is the first function index (0-based) that is included into the range
+    `<LastFunc>`   - is the last function index (0-based) that is included into the range
 
 Example:
 
-The selector for interface named `netpf0` and VF 0, 2 upto 7 (included 2 and 7) and 9 will look like:
-````
+The selector for interface named `netpf0` and VF 0, 2 up to 7 (included 2 and 7) and 9 will look like:
+
+````json
 "pfNames": ["netpf0#0,2-7,9"]
 ````
+
 The selector for PCI address `0000:86:00.0` and VF 0, 1, 3, 4 will look like:
-````
+
+````json
 "rootDevices": ["0000:86:00.0#0-1,3,4"]
 ````
-If only PF network interface or PF PCI address is specified in the selector, then assuming that all VFs of this interface are going to the pool.
 
+If only PF network interface or PF PCI address is specified in the selector, then assuming that all VFs or SFs of this interface are going to the pool.
 
 ### Workflow
 
 - Load device's (Physical function if it is SR-IOV capable) kernel module and bind the driver to the PF
-- Create required Virtual functions
-- Bind all VF with right drivers
+- Create required VFs or SFs
+- Bind all VFs with right drivers
 - Create a resource config map
 - Run SR-IOV Network Device Plugin (as daemonset)
 
@@ -358,14 +482,16 @@ $ kubectl get node node1 -o json | jq '.status.allocatable'
 }
 
 ```
+
 ## Example deployments
 
 We assume that you have working K8s cluster configured with one of the supported meta plugins for multi-network support. Please see [Features](#features) and [Quick Start](#quick-start) sections for more information on required CNI plugins.
 
 ### Deploy the Device Plugin
+
 The [images](./images) directory contains example Dockerfile, sample specs along with build scripts to deploy the SR-IOV Network Device Plugin as daemonset. Please see [README.md](./images/README.md) for more information about the Docker images.
 
-````
+````sh
 # Create ConfigMap
 $ kubectl create -f deployments/configMap.yaml
 configmap/sriovdp-config created
@@ -382,24 +508,25 @@ kube-system   kube-sriov-device-plugin-amd64-46wpv   1/1     Running   0        
 ````
 
 ### Deploy SR-IOV workloads when Multus is used
+
 There are some example Pod specs and related network CRD yaml files in [deployments](./deployments) directory for a sample deployment with Multus.
 
 Leave the SR-IOV Network Device Plugin running and open a new terminal session for following steps.
 
 #### Deploy test Pod connecting to pre-created SR-IOV network
 
-````
+````sh
 $ kubectl create -f pod-tc1.yaml
 pod "testpod1" created
 
 $ kubectl get pods
 NAME                  READY     STATUS    RESTARTS   AGE
-testpod1        	  1/1       Running   0          3s
+testpod1              1/1       Running   0          3s
 ````
 
 #### Verify Pod network interfaces
 
-````
+````sh
 $ kubectl exec -it testpod1 -- ip addr show
 
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
@@ -418,7 +545,7 @@ $ kubectl exec -it testpod1 -- ip addr show
 
 #### Verify Pod routing table
 
-````
+````sh
 $ kubectl exec -it testpod1 -- route -n
 
 Kernel IP routing table
@@ -430,9 +557,10 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 ````
 
 ### Deploy SR-IOV workloads when DANM is used
+
 #### Verify the existence of the example SR-IOV networks
 
-````
+````sh
 [cloudadmin@controller-1 ~]$ kubectl get dnet -n example-sriov
 NAME         AGE
 management   6s
@@ -441,10 +569,11 @@ sriov-b      13m
 ````
 
 #### Connect your networks to existing SR-IOV Device Pools
+
 The Spec.Options.device_pool mandatory parameter denotes the Device Pool used by the network.
 Make sure this parameter is set to the name(s) of your existing SR-IOV Device Pool(s)!
 
-````
+````sh
 [cloudadmin@controller-1 ~]$ kubectl describe node 172.31.3.154 | grep -A8 Allocatable
 Allocatable:
  cpu:                          6
@@ -464,9 +593,10 @@ Allocatable:
 ````
 
 #### Deploy demo Pod connecting to pre-created SR-IOV networks
+
 First, make sure that your Pod asks appropriate number of Devices from the right Device Pools:
 
-````
+````sh
 [cloudadmin@controller-1 ~]$ grep -B1 sriov_ sriov_pod.yaml
       requests:
         nokia.k8s.io/sriov_ens2f1: '2'
@@ -476,14 +606,14 @@ First, make sure that your Pod asks appropriate number of Devices from the right
 
 Then instantiate the Pod:
 
-````
+````sh
 [cloudadmin@controller-1 ~]$ kubectl create -f sriov_pod.yaml
 pod/sriov-pod created
 ````
 
 #### Verify status and the network connections of the demo Pod
 
-````
+````sh
 [cloudadmin@controller-1 ~]$ kubectl get pod sriov-pod -n example-sriov
 NAME        READY   STATUS    RESTARTS   AGE
 sriov-pod   1/1     Running   0          111s
@@ -512,6 +642,16 @@ The allocated device information is exported in Container's environment variable
 For example, if 2 devices are allocated from `intel.com/sriov` extended resource then the allocated device information will be found in following env variable:
 `PCIDEVICE_INTEL_COM_SRIOV=0000:03:02.1,0000:03:04.3`
 
+There is also another environment variable that expose in json format more information about the device that was allocated like mount and addition variables if requested.
+The variable name is `PCIDEVICE_<RESOUCE_NAME>_INFO` appended with full extended resource name (e.g. intel.com/sriov etc.) which is capitailzed and any special characters (".", "/") are replaced with underscore ("_")
+
+vfio device example:
+```
+PCIDEVICE_INTEL_COM_DPDK_NIC_1_INFO={"0000:3b:02.6":{"vfio":{"vfio-dev-mount":"/dev/vfio/169","vfio-mount":"/dev/vfio/vfio"},"vhost":{"net-mount":"/dev/vhost-net","tun-mount":"/dev/net/tun"}}}
+
+# Adding additionalInfo field to the resource definition will add additional information for every device allocated. e.g:
+PCIDEVICE_INTEL_COM_DPDK_NIC_1_INFO={"0000:3b:02.6":{"extraInfo":{"token":"3e49019f-412f-4f02-824e-4cd195944205"},"vfio":{"vfio-dev-mount":"/dev/vfio/169","vfio-mount":"/dev/vfio/vfio"},"vhost":{"net-mount":"/dev/vhost-net","tun-mount":"/dev/net/tun"}}}
+```
 
 ## Virtual Deployments Support
 
@@ -536,17 +676,20 @@ For more information refer to [this](./docs/dpdk/README-virt.md).
 ## Multi Architecture Support
 
 The supported architectures:
-* AMD64
-* ARM64
-* PPC64LE
+
+- AMD64
+- ARM64
+- PPC64LE
 
 Buiding image for AMD64:
-```
+
+```sh
 $ DOCKERFILE=Dockerfile make image
 ```
 
 Buiding image for PPC64LE:
-```
+
+```sh
 $ DOCKERFILE=images/Dockerfile.ppc64le TAG=ghcr.io/k8snetworkplumbingwg/sriov-device-plugin:latest-ppc64le make image
 ```
 

@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 
@@ -23,7 +22,7 @@ type FakeFilesystem struct {
 // Use function creates entire files structure and returns a function to tear it down. Example usage: defer fs.Use()()
 func (fs *FakeFilesystem) Use() func() {
 	// create the new fake fs root dir in /tmp/sriov...
-	tmpDir, err := ioutil.TempDir("", "sriov")
+	tmpDir, err := os.MkdirTemp("", "sriov")
 	if err != nil {
 		panic(fmt.Errorf("error creating fake root dir: %s", err.Error()))
 	}
@@ -70,6 +69,7 @@ func (fs *FakeFilesystem) Use() func() {
 	}
 
 	sysBusPci = path.Join(fs.RootDir, "/sys/bus/pci/devices")
+	sysBusAux = path.Join(fs.RootDir, "/sys/bus/auxiliary/devices")
 
 	return func() {
 		// remove temporary fake fs
@@ -90,6 +90,9 @@ func SetDefaultMockNetlinkProvider() {
 	mockProvider.
 		On("GetDevLinkDeviceEswitchAttrs", mock.AnythingOfType("string")).
 		Return(&nl.DevlinkDevEswitchAttr{Mode: "fakeMode"}, nil)
+	mockProvider.
+		On("GetIPv4RouteList", mock.AnythingOfType("string")).
+		Return([]nl.Route{{Dst: nil}}, nil)
 
 	SetNetlinkProviderInst(&mockProvider)
 }
