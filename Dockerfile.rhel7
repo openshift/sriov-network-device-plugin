@@ -7,7 +7,7 @@ WORKDIR /usr/src/sriov-network-device-plugin
 ENV HTTP_PROXY $http_proxy
 ENV HTTPS_PROXY $https_proxy
 RUN make clean && \
-    make build
+    GO_BUILD_OPTS=CGO_ENABLED=1 GO_TAGS=" " make build
 
 FROM registry.ci.openshift.org/ocp/4.13:base
 ENV INSTALL_PKGS "hwdata"
