@@ -85,7 +85,7 @@ func (rs *resourceServer) register() error {
 		glog.Errorf("%s device plugin unable connect to Kubelet : %v", rs.resourcePool.GetResourceName(), err)
 		return err
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	client := pluginapi.NewRegistrationClient(conn)
 
 	request := &pluginapi.RegisterRequest{
@@ -178,7 +178,6 @@ func (rs *resourceServer) ListAndWatch(empty *pluginapi.Empty, stream pluginapi.
 	glog.Infof("%s: send devices %v\n", methodID, resp)
 	if err := stream.Send(resp); err != nil {
 		glog.Errorf("%s: error: cannot update device states: %v\n", methodID, err)
-		rs.grpcServer.Stop()
 		return err
 	}
 
