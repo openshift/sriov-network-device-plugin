@@ -75,6 +75,7 @@ func GetPfName(pciAddr string) (string, error) {
 	}
 
 	pfEswitchMode, err := GetPfEswitchMode(pciAddr)
+
 	if pfEswitchMode == "" {
 		// If device doesn't support eswitch mode query or doesn't have sriov enabled,
 		// fall back to the default implementation
