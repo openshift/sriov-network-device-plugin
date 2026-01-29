@@ -8,6 +8,9 @@ reviewers:
   - bn222
   - Billy99
   - wizhaoredhat
+  - kunalmemane
+  - MrSanketKumar
+  - SchSeba
 approvers:
   - zshi-redhat
   - dougbtv
@@ -18,5 +21,8 @@ approvers:
   - bn222
   - Billy99
   - wizhaoredhat
+  - kunalmemane
+  - MrSanketKumar
+  - SchSeba
 component: "Networking"
 subcomponent: "SR-IOV"
