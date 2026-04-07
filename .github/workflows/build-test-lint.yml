@@ -8,10 +8,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.25.x
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Build
         run: make build
@@ -24,10 +24,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.25.x
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install hwdata
         run: sudo apt-get install hwdata -y
@@ -43,9 +43,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.25.x
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install hwdata
         run: sudo apt-get install hwdata -y
@@ -66,10 +66,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.25.x
 
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: lint test
         run: make lint
@@ -80,7 +80,7 @@ jobs:
     env:
       SHELLCHECK_OPTS: -e SC3037 # disabled because of false issue in entrypoint.sh ln 14-21. Not using any complicated flags. Works with alpines almquist shell.
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     - name: Run ShellCheck
       uses: ludeeus/action-shellcheck@master
       with:
@@ -90,8 +90,8 @@ jobs:
     runs-on: ubuntu-24.04
     name: Hadolint
     steps:
-    - uses: actions/checkout@v3
-    - uses: hadolint/hadolint-action@v3.1.0
+    - uses: actions/checkout@v6
+    - uses: hadolint/hadolint-action@v3.3.0
       name: Run Hadolint
       with:
        dockerfile: ./images/Dockerfile
@@ -100,12 +100,12 @@ jobs:
   go-check:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: 1.23.x
+        go-version: 1.25.x
 
     # if this fails, run go mod tidy
     - name: Check if module files are consistent with code
@@ -123,13 +123,13 @@ jobs:
       TEST_REPORT_PATH: k8s-artifacts
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: build sriov-network-device-plugin image
         run: podman build -f images/Dockerfile -t ghaction-sriov-network-device-plugin:pr-${{github.event.pull_request.number}} .
 
       - name: Check out sriov operator's code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
         with:
           repository: k8snetworkplumbingwg/sriov-network-operator
           path: sriov-network-operator-wc
@@ -140,7 +140,7 @@ jobs:
         env:
           LOCAL_SRIOV_DEVICE_PLUGIN_IMAGE: ghaction-sriov-network-device-plugin:pr-${{github.event.pull_request.number}}
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ${{ env.TEST_REPORT_PATH }}
