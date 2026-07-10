@@ -12,6 +12,9 @@ reviewers:
   - SchSeba
   - kunalmemane
   - MrSanketKumar
+  - SamD2021
+  - pablmart
+  - zhiqiangf
 approvers:
   - zshi-redhat
   - dougbtv
@@ -26,5 +29,8 @@ approvers:
   - SchSeba
   - kunalmemane
   - MrSanketKumar
+  - SamD2021
+  - pablmart
+  - zhiqiangf
 component: "Networking"
 subcomponent: "SR-IOV"
