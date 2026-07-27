@@ -166,9 +166,10 @@ func (rs *resourceServer) ListAndWatch(empty *pluginapi.Empty, stream pluginapi.
 	methodID := fmt.Sprintf("ListAndWatch(%s)", rs.resourcePool.GetResourceName()) // for logging purpose
 	glog.Infof("%s invoked", methodID)
 	// Send initial list of devices
-	devs := make([]*pluginapi.Device, 0)
+	poolDevs := rs.resourcePool.GetDevices()
+	devs := make([]*pluginapi.Device, 0, len(poolDevs))
 	resp := new(pluginapi.ListAndWatchResponse)
-	for _, dev := range rs.resourcePool.GetDevices() {
+	for _, dev := range poolDevs {
 		devs = append(devs, dev)
 	}
 	resp.Devices = devs

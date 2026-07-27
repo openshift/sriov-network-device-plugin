@@ -224,7 +224,7 @@ var _ = Describe("Factory", func() {
 			dp := f.GetDeviceProvider(c.DeviceType)
 			c.SelectorObjs, err = f.GetDeviceFilter(c)
 			Expect(err).NotTo(HaveOccurred())
-			filteredDevices := make([]types.HostDevice, 0)
+			filteredDevices := make([]types.HostDevice, 0, len(devs))
 			for index := range c.SelectorObjs {
 				currentSelectorFilteredDevices, err := dp.GetFilteredDevices(devs, c, index)
 				Expect(err).NotTo(HaveOccurred())

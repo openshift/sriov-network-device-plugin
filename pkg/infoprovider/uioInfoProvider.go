@@ -22,6 +22,8 @@ import (
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/utils"
 )
 
+const devPermissions = "rw"
+
 type uioInfoProvider struct {
 	pciAddr string
 	uioDev  string
@@ -51,7 +53,7 @@ func (rp *uioInfoProvider) GetDeviceSpecs() []*pluginapi.DeviceSpec {
 		devSpecs = append(devSpecs, &pluginapi.DeviceSpec{
 			HostPath:      uioDev,
 			ContainerPath: uioDev,
-			Permissions:   "rw",
+			Permissions:   devPermissions,
 		})
 		rp.uioDev = uioDev
 	}
