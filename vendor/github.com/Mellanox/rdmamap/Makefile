@@ -17,7 +17,7 @@ GOLANGCI_LINT = $(GOBIN)/golangci-lint
 # golangci-lint version should be updated periodically
 # we keep it fixed to avoid it from unexpectedly failing on the project
 # in case of a version bump
-GOLANGCI_LINT_VER = v1.23.8
+GOLANGCI_LINT_VER = v2.11.4
 TIMEOUT = 15
 Q = $(if $(filter 1,$V),,@)
 
@@ -37,7 +37,7 @@ build: $(GOFILES)
 # Tools
 
 $(GOLANGCI_LINT): ; $(info  building golangci-lint...)
-	$Q curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VER)
+	$Q curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VER)
 
 GOVERALLS = $(GOBIN)/goveralls
 $(GOBIN)/goveralls:  $(BASE)  $(GOBIN) ; $(info  building goveralls...)
