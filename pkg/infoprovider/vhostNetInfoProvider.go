@@ -26,13 +26,20 @@ import (
 	"github.com/k8snetworkplumbingwg/sriov-network-device-plugin/pkg/types"
 )
 
+const (
+	// vhostNetPath is the real device path for vhost-net
+	vhostNetPath = "/dev/vhost-net"
+	// tunPath is the real device path for tun
+	tunPath = "/dev/net/tun"
+)
+
 var (
 	// HostNet variable for vhost-net device path
 	// used to check path for unit-tests
-	HostNet = "/dev/vhost-net"
+	HostNet = vhostNetPath
 	// HostTun variable for tun device path
 	// used to check path for unit-tests
-	HostTun = "/dev/net/tun"
+	HostTun = tunPath
 )
 
 /*
@@ -54,11 +61,11 @@ func VhostNetDeviceExist() bool {
 
 // GetVhostNetDeviceSpec returns an instance of DeviceSpec for vhost-net
 func getVhostNetDeviceSpec() []*pluginapi.DeviceSpec {
-	deviceSpec := make([]*pluginapi.DeviceSpec, 0)
+	deviceSpec := make([]*pluginapi.DeviceSpec, 0, 1)
 	deviceSpec = append(deviceSpec, &pluginapi.DeviceSpec{
-		HostPath:      "/dev/vhost-net",
-		ContainerPath: "/dev/vhost-net",
-		Permissions:   "rw",
+		HostPath:      vhostNetPath,
+		ContainerPath: vhostNetPath,
+		Permissions:   devPermissions,
 	})
 
 	return deviceSpec
@@ -72,11 +79,11 @@ func tunDeviceExist() bool {
 
 // GetTunDeviceSpec returns an instance of DeviceSpec for Tun
 func getTunDeviceSpec() []*pluginapi.DeviceSpec {
-	deviceSpec := make([]*pluginapi.DeviceSpec, 0)
+	deviceSpec := make([]*pluginapi.DeviceSpec, 0, 1)
 	deviceSpec = append(deviceSpec, &pluginapi.DeviceSpec{
-		HostPath:      "/dev/net/tun",
-		ContainerPath: "/dev/net/tun",
-		Permissions:   "rw",
+		HostPath:      tunPath,
+		ContainerPath: tunPath,
+		Permissions:   devPermissions,
 	})
 
 	return deviceSpec
@@ -91,13 +98,13 @@ func (ip *vhostNetInfoProvider) GetName() string {
 
 func (ip *vhostNetInfoProvider) GetDeviceSpecs() []*pluginapi.DeviceSpec {
 	if !VhostNetDeviceExist() {
-		glog.Errorf("GetDeviceSpecs(): /dev/vhost-net doesn't exist")
+		glog.Errorf("GetDeviceSpecs(): %s doesn't exist", vhostNetPath)
 		return nil
 	}
 	deviceSpec := getVhostNetDeviceSpec()
 
 	if !tunDeviceExist() {
-		glog.Errorf("GetDeviceSpecs(): /dev/net/tun doesn't exist")
+		glog.Errorf("GetDeviceSpecs(): %s doesn't exist", tunPath)
 		return nil
 	}
 	deviceSpec = append(deviceSpec, getTunDeviceSpec()...)
@@ -107,8 +114,8 @@ func (ip *vhostNetInfoProvider) GetDeviceSpecs() []*pluginapi.DeviceSpec {
 
 func (ip *vhostNetInfoProvider) GetEnvVal() types.AdditionalInfo {
 	envs := make(map[string]string, 0)
-	envs["net-mount"] = "/dev/vhost-net"
-	envs["tun-mount"] = "/dev/net/tun"
+	envs["net-mount"] = vhostNetPath
+	envs["tun-mount"] = tunPath
 
 	return envs
 }
