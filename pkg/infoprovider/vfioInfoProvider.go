@@ -50,7 +50,7 @@ func (rp *vfioInfoProvider) GetDeviceSpecs() []*pluginapi.DeviceSpec {
 	devSpecs = append(devSpecs, &pluginapi.DeviceSpec{
 		HostPath:      rp.vfioMount,
 		ContainerPath: rp.vfioMount,
-		Permissions:   "rw",
+		Permissions:   devPermissions,
 	})
 
 	vfioDevHost, vfioDevContainer, err := utils.GetVFIODeviceFile(rp.pciAddr)
@@ -60,7 +60,7 @@ func (rp *vfioInfoProvider) GetDeviceSpecs() []*pluginapi.DeviceSpec {
 		devSpecs = append(devSpecs, &pluginapi.DeviceSpec{
 			HostPath:      vfioDevHost,
 			ContainerPath: vfioDevContainer,
-			Permissions:   "rw",
+			Permissions:   devPermissions,
 		})
 	}
 
@@ -69,7 +69,7 @@ func (rp *vfioInfoProvider) GetDeviceSpecs() []*pluginapi.DeviceSpec {
 
 func (rp *vfioInfoProvider) GetEnvVal() types.AdditionalInfo {
 	envs := make(map[string]string, 0)
-	envs["mount"] = "/dev/vfio/vfio"
+	envs["mount"] = rp.vfioMount
 
 	_, vfioDevContainer, err := utils.GetVFIODeviceFile(rp.pciAddr)
 	if err != nil {

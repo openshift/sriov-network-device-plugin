@@ -14,7 +14,7 @@ import (
 // https://npf.io/2015/06/testing-exec-command
 func FakeExecCommand(outs, exitCode string) func(string, ...string) *exec.Cmd {
 	return func(command string, args ...string) *exec.Cmd {
-		cs := []string{"-test.run=TestHelperProcess", "--", command}
+		cs := []string{"-test.run=TestHelperProcess", "--", command} //nolint:prealloc
 		cs = append(cs, args...)
 		cmd := exec.Command(os.Args[0], cs...)
 		cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1",
