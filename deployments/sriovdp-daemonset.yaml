@@ -26,6 +26,7 @@ spec:
         app: sriovdp
     spec:
       hostNetwork: true
+      hostUsers: true
       serviceAccountName: sriov-device-plugin
       containers:
       - name: kube-sriovdp
