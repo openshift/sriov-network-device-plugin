@@ -13,8 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-//nolint:gomnd
 package sriovnet
 
 import (
@@ -125,7 +123,9 @@ func lsFilesWithPrefix(dir, filePrefix string, ignoreDir bool) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	fileInfos, err := f.Readdir(-1)
 	if err != nil {
 		return nil, err
